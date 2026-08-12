@@ -18,6 +18,7 @@ import {
   isZero,
   money,
   round,
+  subtract as subtractMoney,
   sum,
   ZERO,
   type Money,
@@ -590,7 +591,17 @@ export async function deleteDraftEntry(ctx: TenantContext, entryId: string): Pro
   });
 }
 
-/** Balance of one account over an optional date range, from posted lines only. */
+/**
+ * Balance of one account over an optional date range, from ledger lines only.
+ *
+ * `balance` is signed by the account's *normal balance*, so an ordinary
+ * position reads positive whichever side of the equation the account sits on:
+ * a bank account with 5,000 debit returns 5,000, and revenue with 5,000 credit
+ * also returns 5,000. Returning raw `debit - credit` would make every revenue,
+ * liability and equity figure negative and force each caller to remember the
+ * sign convention. `debit` and `credit` are returned unsigned for callers such
+ * as the trial balance, which need the two columns as posted.
+ */
 export async function getAccountBalance(
   ctx: TenantContext,
   accountId: string,
@@ -608,16 +619,22 @@ export async function getAccountBalance(
     .select({
       debit: sql<string>`coalesce(sum(${journalLines.baseDebit}), 0)`,
       credit: sql<string>`coalesce(sum(${journalLines.baseCredit}), 0)`,
+      accountType: accounts.type,
     })
     .from(journalLines)
     .innerJoin(journalEntries, eq(journalEntries.id, journalLines.entryId))
-    .where(and(...conditions));
+    .innerJoin(accounts, eq(accounts.id, journalLines.accountId))
+    .where(and(...conditions))
+    .groupBy(accounts.type);
 
   const debit = money(row?.debit ?? '0');
   const credit = money(row?.credit ?? '0');
+  const isDebitNormal = row?.accountType === 'asset' || row?.accountType === 'expense';
+  const balance = isDebitNormal ? subtractMoney(debit, credit) : subtractMoney(credit, debit);
+
   return {
     debit: round(debit, ctx.currencyPrecision),
     credit: round(credit, ctx.currencyPrecision),
-    balance: round(add(debit, `-${credit}`), ctx.currencyPrecision),
+    balance: round(balance, ctx.currencyPrecision),
   };
 }

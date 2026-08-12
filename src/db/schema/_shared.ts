@@ -1,5 +1,19 @@
 import { sql } from 'drizzle-orm';
-import { numeric, pgEnum, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { customType, pgEnum, timestamp, uuid } from 'drizzle-orm/pg-core';
+
+/**
+ * Strips the trailing zeros Postgres pads onto a `numeric(20,6)` value.
+ *
+ * Postgres returns `6500.000000` where the application's own arithmetic
+ * produces `6500`. Both are the same number, but the difference leaks into
+ * every equality check and every rendered figure, so it is normalised once
+ * here — at the column boundary — rather than at each call site.
+ */
+function canonicalDecimal(value: string): string {
+  if (!value.includes('.')) return value;
+  const trimmed = value.replace(/0+$/, '').replace(/\.$/, '');
+  return trimmed === '' || trimmed === '-' ? '0' : trimmed;
+}
 
 /**
  * Money is stored as `numeric(20, 6)` everywhere and moved through the app as
@@ -9,11 +23,21 @@ import { numeric, pgEnum, timestamp, uuid } from 'drizzle-orm/pg-core';
  * fractions of a cent. Six decimal places leaves room for currencies with
  * three minor units and for exchange-rate-converted amounts that need rounding
  * headroom above the presentation scale.
+ *
+ * Values are canonicalised on read so the database and the application agree
+ * on how a number looks, not merely on what it is worth.
  */
-export const amount = (name: string) => numeric(name, { precision: 20, scale: 6 });
+const decimalColumn = (precision: number, scale: number) =>
+  customType<{ data: string; driverData: string }>({
+    dataType: () => `numeric(${precision}, ${scale})`,
+    fromDriver: (value) => canonicalDecimal(String(value)),
+    toDriver: (value) => String(value),
+  });
+
+export const amount = decimalColumn(20, 6);
 
 /** Exchange rates need more decimals than money: some pairs trade at 0.00001234. */
-export const rate = (name: string) => numeric(name, { precision: 20, scale: 10 });
+export const rate = decimalColumn(20, 10);
 
 /** Every table gets these. `updatedAt` is maintained by the app, not a trigger. */
 export const timestamps = {
