@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, inArray, lte, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, gte, sql } from 'drizzle-orm';
 
 import { db, type Executor, type Tx } from '@/db';
 import { accounts, fiscalPeriods, journalEntries, journalLines } from '@/db/schema';
@@ -589,6 +589,90 @@ export async function deleteDraftEntry(ctx: TenantContext, entryId: string): Pro
 
     await tx.delete(journalEntries).where(eq(journalEntries.id, entryId));
   });
+}
+
+/** Journal entries for the list screen, newest first. */
+export async function listJournalEntries(
+  ctx: TenantContext,
+  filters: {
+    status?: string;
+    sourceType?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+) {
+  requirePermission(ctx, PERMISSIONS.transactions.view);
+
+  const conditions = [eq(journalEntries.companyId, ctx.companyId)];
+  if (filters.status) {
+    conditions.push(eq(journalEntries.status, filters.status as 'posted'));
+  }
+  if (filters.sourceType) conditions.push(eq(journalEntries.sourceType, filters.sourceType));
+  if (filters.from) conditions.push(gte(journalEntries.entryDate, filters.from));
+  if (filters.to) conditions.push(lte(journalEntries.entryDate, filters.to));
+  if (filters.search) {
+    const term = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${journalEntries.entryNumber}) like ${term}
+        or lower(coalesce(${journalEntries.description}, '')) like ${term}
+        or lower(coalesce(${journalEntries.reference}, '')) like ${term})`,
+    );
+  }
+
+  return db
+    .select({
+      id: journalEntries.id,
+      entryNumber: journalEntries.entryNumber,
+      entryDate: journalEntries.entryDate,
+      description: journalEntries.description,
+      reference: journalEntries.reference,
+      sourceType: journalEntries.sourceType,
+      currencyCode: journalEntries.currencyCode,
+      totalDebit: journalEntries.totalDebit,
+      status: journalEntries.status,
+    })
+    .from(journalEntries)
+    .where(and(...conditions))
+    .orderBy(desc(journalEntries.entryDate), desc(journalEntries.entryNumber))
+    .limit(filters.limit ?? 50)
+    .offset(filters.offset ?? 0);
+}
+
+/** One entry with its lines and account names, for the detail screen. */
+export async function getJournalEntry(ctx: TenantContext, entryId: string) {
+  requirePermission(ctx, PERMISSIONS.transactions.view);
+
+  const [entry] = await db
+    .select()
+    .from(journalEntries)
+    .where(and(eq(journalEntries.id, entryId), eq(journalEntries.companyId, ctx.companyId)))
+    .limit(1);
+
+  if (!entry) throw new NotFoundError('Journal entry');
+
+  const lines = await db
+    .select({
+      id: journalLines.id,
+      lineNumber: journalLines.lineNumber,
+      accountId: journalLines.accountId,
+      accountCode: accounts.code,
+      accountName: accounts.name,
+      description: journalLines.description,
+      debit: journalLines.debit,
+      credit: journalLines.credit,
+      baseDebit: journalLines.baseDebit,
+      baseCredit: journalLines.baseCredit,
+      currencyCode: journalLines.currencyCode,
+    })
+    .from(journalLines)
+    .innerJoin(accounts, eq(accounts.id, journalLines.accountId))
+    .where(eq(journalLines.entryId, entryId))
+    .orderBy(journalLines.lineNumber);
+
+  return { entry, lines };
 }
 
 /**

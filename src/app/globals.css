@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * A financial product reads as dense, quiet and precise. The palette is
+ * near-neutral so the only saturated colour on screen is meaningful: an
+ * overdue balance, a negative variance, a pending approval.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --surface: 0 0% 100%;
+    --surface-muted: 220 14% 98%;
+    --border: 220 13% 91%;
+    --border-strong: 220 13% 84%;
+
+    --foreground: 224 21% 12%;
+    --muted-foreground: 220 9% 46%;
+    --subtle-foreground: 220 9% 60%;
+
+    --primary: 224 71% 22%;
+    --primary-foreground: 0 0% 100%;
+
+    --accent: 221 83% 53%;
+    --accent-foreground: 0 0% 100%;
+    --accent-subtle: 221 83% 96%;
+
+    --positive: 158 64% 30%;
+    --positive-subtle: 152 55% 95%;
+    --negative: 0 72% 45%;
+    --negative-subtle: 0 86% 97%;
+    --warning: 32 81% 40%;
+    --warning-subtle: 45 93% 95%;
+
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 224 24% 8%;
+    --surface: 224 22% 11%;
+    --surface-muted: 224 20% 14%;
+    --border: 223 18% 20%;
+    --border-strong: 223 16% 28%;
+
+    --foreground: 220 20% 96%;
+    --muted-foreground: 220 12% 65%;
+    --subtle-foreground: 220 10% 52%;
+
+    --primary: 220 20% 96%;
+    --primary-foreground: 224 24% 8%;
+
+    --accent: 217 91% 60%;
+    --accent-foreground: 224 24% 8%;
+    --accent-subtle: 221 60% 18%;
+
+    --positive: 156 60% 45%;
+    --positive-subtle: 158 50% 14%;
+    --negative: 0 84% 65%;
+    --negative-subtle: 0 50% 16%;
+    --warning: 38 92% 58%;
+    --warning-subtle: 36 50% 15%;
+
+    --ring: 217 91% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /**
+   * Financial figures line up in columns only when digits share a width, so
+   * every amount is rendered with tabular numerals.
+   */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Focus is always visible: this is keyboard-heavy, data-entry software. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::-webkit-scrollbar {
+    @apply h-2 w-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border-strong;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-border bg-surface;
+  }
+
+  .input-base {
+    @apply h-9 w-full rounded-md border border-border bg-surface px-3 text-sm
+      text-foreground placeholder:text-subtle-foreground
+      focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .label-base {
+    @apply mb-1.5 block text-xs font-medium text-muted-foreground;
+  }
+
+  /* Dense table styling shared by every financial list. */
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .data-table thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-border bg-surface-muted
+      px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .data-table tbody td {
+    @apply border-b border-border px-3 py-2 text-foreground;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-surface-muted;
+  }
+  .data-table .num {
+    @apply text-right tabular;
+  }
+}
