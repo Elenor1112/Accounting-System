@@ -65,6 +65,15 @@ export const accounts = pgTable(
     isPostable: boolean('is_postable').notNull().default(true),
 
     currencyCode: text('currency_code'),
+
+    /**
+     * Marks the handful of accounts the engine must find by function rather
+     * than by code — AR/AP control, tax, retained earnings, FX gain/loss.
+     * Resolving by role is what lets a client renumber or rename their whole
+     * chart without breaking invoice posting.
+     */
+    role: text('role'),
+
     isArchived: boolean('is_archived').notNull().default(false),
     ...timestamps,
   },
@@ -72,6 +81,11 @@ export const accounts = pgTable(
     uniqueIndex('accounts_company_code_key').on(t.companyId, t.code),
     index('accounts_company_type_idx').on(t.companyId, t.type),
     index('accounts_company_path_idx').on(t.companyId, t.path),
+    // At most one account per role per company, so role lookup is unambiguous.
+    // Partial: the vast majority of accounts have no role and must not collide.
+    uniqueIndex('accounts_company_role_key')
+      .on(t.companyId, t.role)
+      .where(sql`${t.role} is not null`),
     foreignKey({
       columns: [t.parentId],
       foreignColumns: [t.id],

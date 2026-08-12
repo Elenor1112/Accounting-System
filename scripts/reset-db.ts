@@ -9,6 +9,8 @@
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
 
+import { firstRow } from './_helpers';
+
 config({ path: '.env.local' });
 
 async function main() {
@@ -21,9 +23,12 @@ async function main() {
 
   const sql = neon(process.env.DATABASE_URL!);
 
-  const [{ count }] = await sql`
-    select count(*)::int as count from information_schema.tables
-    where table_schema = 'public'`;
+  const { count } = firstRow<{ count: number }>(
+    await sql`
+      select count(*)::int as count from information_schema.tables
+      where table_schema = 'public'`,
+    'table count',
+  );
   console.log(`Dropping public schema (${count} tables) and drizzle metadata …`);
 
   await sql`drop schema if exists public cascade`;

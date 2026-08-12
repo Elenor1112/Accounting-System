@@ -8,6 +8,20 @@
       "when": 1786526431708,
       "tag": "0000_init_accounting",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786527989235,
+      "tag": "0001_documents_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786528330870,
+      "tag": "0002_account_roles",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,12 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "db:reset": "tsx scripts/reset-db.ts",
+    "db:verify": "tsx scripts/verify-constraints.ts",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "tsx --test src/lib/*.test.ts",
+    "//test:integration": "--conditions=react-server resolves `server-only` to its empty module, since there is no bundler under the node test runner.",
+    "test:integration": "tsx --conditions=react-server --test src/server/services/__tests__/*.test.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
