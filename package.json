@@ -12,7 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:seed": "tsx --conditions=react-server scripts/seed.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:verify": "tsx scripts/verify-constraints.ts",
     "test": "npm run test:unit && npm run test:integration",

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
-import { db } from '@/db';
+import { db, type Tx } from '@/db';
 import { contacts, documents, journalEntries, journalLines, payments } from '@/db/schema';
 import { requirePermission, type TenantContext } from '@/server/auth/context';
 import { PERMISSIONS } from '@/server/auth/permissions';
@@ -10,20 +10,28 @@ import { ConflictError, NotFoundError } from '@/server/errors';
 import { add, money, subtract, type Money } from '@/lib/money';
 
 import { recordAudit, diffValues } from './audit-service';
-import { LEDGER_STATUSES } from './journal-service';
+import { allocateDocumentNumber } from './numbering-service';
 
 export type ContactRow = typeof contacts.$inferSelect;
 export type ContactKind = 'customer' | 'vendor' | 'both';
 
-/** Next sequential code for a contact, e.g. CUST-0007. */
-async function nextContactCode(companyId: string, kind: ContactKind): Promise<string> {
-  const prefix = kind === 'vendor' ? 'VEND' : 'CUST';
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(contacts)
-    .where(and(eq(contacts.companyId, companyId), eq(contacts.kind, kind)));
-
-  return `${prefix}-${String((row?.count ?? 0) + 1).padStart(4, '0')}`;
+/**
+ * Next sequential contact code, e.g. `CUST-0007`.
+ *
+ * Allocated through the numbering service — which takes its counter row
+ * `FOR UPDATE` — rather than by counting existing rows. Counting is racy: two
+ * concurrent creates both read the same count and generate the same code, and
+ * the unique index then rejects the loser after the user has filled in a form.
+ */
+async function nextContactCode(
+  tx: Tx,
+  companyId: string,
+  kind: ContactKind,
+): Promise<string> {
+  return allocateDocumentNumber(tx, {
+    companyId,
+    documentType: kind === 'vendor' ? 'vendor' : 'customer',
+  });
 }
 
 export async function createContact(
@@ -45,9 +53,9 @@ export async function createContact(
 ): Promise<ContactRow> {
   requirePermission(ctx, PERMISSIONS.contacts.manage);
 
-  const code = input.code ?? (await nextContactCode(ctx.companyId, input.kind));
-
   return db.transaction(async (tx) => {
+    const code = input.code ?? (await nextContactCode(tx, ctx.companyId, input.kind));
+
     const [created] = await tx
       .insert(contacts)
       .values({

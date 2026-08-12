@@ -16,7 +16,14 @@ const DEFAULT_PATTERNS: Record<string, string> = {
   purchase_order: 'PO-{YYYY}-{####}',
   payment: 'PAY-{YYYY}-{####}',
   expense: 'EXP-{YYYY}-{####}',
+  // Contact codes carry no date and never reset — a customer's identifier
+  // should stay stable and unique for the life of the company.
+  customer: 'CUST-{####}',
+  vendor: 'VEND-{####}',
 };
+
+/** Document types whose counters run continuously rather than resetting. */
+const NEVER_RESET = new Set(['customer', 'vendor']);
 
 /** The period key a counter resets on, per its policy. */
 function resetKeyFor(policy: string, date: Date): string {
@@ -88,13 +95,45 @@ export async function allocateDocumentNumber(
         'numbering_not_configured',
       );
     }
-    // Create on first use so a new company works without pre-seeding every
-    // sequence, while still allowing an admin to customise the pattern later.
+
+    /**
+     * Create on first use, so a new company works without pre-seeding every
+     * sequence and an admin can still customise the pattern later.
+     *
+     * `FOR UPDATE` above cannot lock a row that does not exist yet, so two
+     * concurrent first-uses would both try to insert and one would hit the
+     * unique index. `onConflictDoNothing` lets the loser fall through and
+     * re-read the winner's row, after which the normal lock applies.
+     */
     const [created] = await tx
       .insert(numberSequences)
-      .values({ companyId, documentType, pattern, nextValue: 1 })
+      .values({
+        companyId,
+        documentType,
+        pattern,
+        nextValue: 1,
+        resetPolicy: NEVER_RESET.has(documentType) ? 'never' : 'yearly',
+      })
+      .onConflictDoNothing({
+        target: [numberSequences.companyId, numberSequences.documentType],
+      })
       .returning();
-    sequence = created;
+
+    sequence =
+      created ??
+      (
+        await tx
+          .select()
+          .from(numberSequences)
+          .where(
+            and(
+              eq(numberSequences.companyId, companyId),
+              eq(numberSequences.documentType, documentType),
+            ),
+          )
+          .for('update')
+          .limit(1)
+      )[0];
   }
 
   if (!sequence) {
