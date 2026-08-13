@@ -20,10 +20,13 @@ const DEFAULT_PATTERNS: Record<string, string> = {
   // should stay stable and unique for the life of the company.
   customer: 'CUST-{####}',
   vendor: 'VEND-{####}',
+  // An asset tag follows the physical item for its whole life, often onto a
+  // sticker, so it must never reset or be reused.
+  fixed_asset: 'FA-{####}',
 };
 
 /** Document types whose counters run continuously rather than resetting. */
-const NEVER_RESET = new Set(['customer', 'vendor']);
+const NEVER_RESET = new Set(['customer', 'vendor', 'fixed_asset']);
 
 /** The period key a counter resets on, per its policy. */
 function resetKeyFor(policy: string, date: Date): string {

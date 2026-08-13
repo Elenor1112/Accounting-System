@@ -104,6 +104,32 @@ export function divide(a: Money, b: Money | number): Money {
   return fromScaled(divideRounded(toScaled(a) * RATE_FACTOR, divisor));
 }
 
+/**
+ * Divides at *rate* scale (10dp) rather than money scale.
+ *
+ * Exchange rates need every one of those ten decimals: the reciprocal of
+ * 3.0675 is 0.32599837…, and rounding it to money's 6dp (0.325998) loses
+ * precision the `numeric(20,10)` rate column exists to hold — enough that
+ * converting 10,000 out and back drifts by more than a minor unit. Use this
+ * for rates; use `divide` for amounts.
+ */
+export function divideRate(a: Money, b: Money | number): Money {
+  const divisor = toRateScaled(b);
+  if (divisor === 0n) throw new Error('Division by zero');
+  const scaled = divideRounded(toRateScaled(a) * RATE_FACTOR, divisor);
+
+  // Render at rate scale, trimming trailing zeros the way `fromScaled` does.
+  const negative = scaled < 0n;
+  const magnitude = negative ? -scaled : scaled;
+  const whole = magnitude / RATE_FACTOR;
+  const fraction = (magnitude % RATE_FACTOR)
+    .toString()
+    .padStart(RATE_SCALE, '0')
+    .replace(/0+$/, '');
+  const body = fraction === '' ? `${whole}` : `${whole}.${fraction}`;
+  return negative && body !== '0' ? `-${body}` : body;
+}
+
 /** Half-up division on BigInt, correct for negative numerators. */
 function divideRounded(numerator: bigint, denominator: bigint): bigint {
   const negative = numerator < 0n !== denominator < 0n;

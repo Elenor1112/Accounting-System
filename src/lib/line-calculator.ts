@@ -17,7 +17,7 @@
  * actually charged. Computing tax on the undiscounted figure would overstate
  * the liability on every discounted line.
  */
-import { add, divide, isZero, money, multiply, round, subtract, sum, ZERO, type Money } from './money';
+import { add, divide, gt, isZero, money, multiply, round, subtract, sum, ZERO, type Money } from './money';
 
 export type DiscountType = 'none' | 'percent' | 'amount';
 
@@ -67,7 +67,7 @@ export function calculateLine(input: LineInput, precision = 2): LineResult {
 
   // A discount can never exceed the line itself; clamping here keeps a
   // mis-typed fixed discount from producing a negative (credit) line.
-  if (Number(discountAmount) > Number(gross)) {
+  if (gt(discountAmount, gross)) {
     discountAmount = gross;
   }
 

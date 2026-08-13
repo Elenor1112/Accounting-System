@@ -2,8 +2,10 @@ import Link from 'next/link';
 
 import { DataTable, Pagination, type Column } from '@/components/data-table';
 import { FilterBar } from '@/components/filter-bar';
-import { Badge, PageHeader, statusTone } from '@/components/ui';
+import { Badge, Button, PageHeader, statusTone } from '@/components/ui';
 import * as fmt from '@/lib/format';
+import { can } from '@/server/auth/context';
+import { PERMISSIONS } from '@/server/auth/permissions';
 import { requireTenantContext } from '@/server/auth/session';
 import { listJournalEntries } from '@/server/services/journal-service';
 
@@ -82,6 +84,13 @@ export default async function JournalPage({
       <PageHeader
         title="Journal Entries"
         description="Every posting to the general ledger"
+        actions={
+          can(ctx, PERMISSIONS.transactions.create) ? (
+            <Link href="/journal/new">
+              <Button variant="primary">New entry</Button>
+            </Link>
+          ) : null
+        }
       />
 
       <FilterBar

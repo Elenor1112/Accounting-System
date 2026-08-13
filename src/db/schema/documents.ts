@@ -103,6 +103,23 @@ export const documents = pgTable(
       'documents_paid_not_over_total_ck',
       sql`${t.amountPaid} <= ${t.total} + 0.000001`,
     ),
+    /**
+     * The document's own arithmetic must hold: total = subtotal − discount +
+     * tax. Previously this was computed in the service and never checked, so a
+     * bug there could store internally inconsistent totals that every report
+     * would then faithfully repeat. The epsilon matches the existing
+     * `amountPaid` tolerance — a rounding allowance at the sixth decimal of a
+     * numeric(20,6), not a licence for real drift.
+     */
+    check(
+      'documents_total_consistent_ck',
+      sql`abs(${t.total} - (${t.subtotal} - ${t.discountTotal} + ${t.taxTotal})) <= 0.000001`,
+    ),
+    /** balanceDue is what remains: total less what has been paid. */
+    check(
+      'documents_balance_consistent_ck',
+      sql`abs(${t.balanceDue} - (${t.total} - ${t.amountPaid})) <= 0.000001`,
+    ),
     unique('documents_id_company_key').on(t.id, t.companyId),
   ],
 );
@@ -133,6 +150,15 @@ export const documentLines = pgTable(
     /** Revenue account for a sale; expense/asset account for a purchase. */
     accountId: uuid('account_id').notNull(),
 
+    /**
+     * The stocked item this line sells or buys, where there is one.
+     *
+     * Null for a free-text or service line. When set on a sale, posting the
+     * document also relieves inventory and recognises cost — this column is
+     * what ties the AR subledger to the inventory subledger.
+     */
+    productId: uuid('product_id'),
+
     lineSubtotal: amount('line_subtotal').notNull().default('0'),
     lineTotal: amount('line_total').notNull().default('0'),
 
@@ -142,6 +168,7 @@ export const documentLines = pgTable(
   },
   (t) => [
     index('document_lines_document_idx').on(t.documentId, t.lineNumber),
+    index('document_lines_product_idx').on(t.companyId, t.productId),
     foreignKey({
       columns: [t.documentId, t.companyId],
       foreignColumns: [documents.id, documents.companyId],
@@ -442,15 +469,41 @@ export const reconciliations = pgTable(
     /** Ledger balance at `statementDate`, captured when the reconciliation closed. */
     ledgerBalance: amount('ledger_balance').notNull().default('0'),
     difference: amount('difference').notNull().default('0'),
-    status: text('status', { enum: ['in_progress', 'completed'] })
+    /**
+     * `discrepancy` is the state a non-zero difference lands in. Previously a
+     * reconciliation was marked `completed` whatever the difference, so the
+     * screen showed a green state over an unexplained cash gap — defeating the
+     * only purpose reconciliation has. `completed` now requires either a zero
+     * difference or an explicit written explanation.
+     */
+    status: text('status', {
+      enum: ['draft', 'in_progress', 'discrepancy', 'completed'],
+    })
       .notNull()
       .default('in_progress'),
+    /** Why a non-zero difference was accepted. Required to complete one. */
+    explanation: text('explanation'),
+    /** An adjusting entry posted to clear the difference, where one was made. */
+    adjustmentEntryId: uuid('adjustment_entry_id'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     completedById: uuid('completed_by_id').references(() => users.id, { onDelete: 'set null' }),
     ...timestamps,
   },
   (t) => [
     index('reconciliations_account_idx').on(t.companyId, t.bankAccountId, t.statementDate),
+    /**
+     * The control, in the database rather than only in the service: a
+     * reconciliation cannot be `completed` while carrying an unexplained
+     * difference. Either the balances agree, or someone has written down why
+     * they do not.
+     */
+    check(
+      'reconciliations_completed_explained_ck',
+      sql`${t.status} <> 'completed'
+          OR ${t.difference} = 0
+          OR ${t.explanation} IS NOT NULL
+          OR ${t.adjustmentEntryId} IS NOT NULL`,
+    ),
     foreignKey({
       columns: [t.bankAccountId, t.companyId],
       foreignColumns: [bankAccounts.id, bankAccounts.companyId],

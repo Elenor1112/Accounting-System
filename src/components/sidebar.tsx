@@ -58,6 +58,8 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/accounts', label: 'Chart of Accounts', permission: PERMISSIONS.accounts.view },
       { href: '/journal', label: 'Journal Entries', permission: PERMISSIONS.transactions.view },
+      { href: '/inventory', label: 'Inventory', permission: PERMISSIONS.inventory.view },
+      { href: '/fixed-assets', label: 'Fixed Assets', permission: PERMISSIONS.fixedAssets.view },
       { href: '/periods', label: 'Fiscal Periods', permission: PERMISSIONS.transactions.view },
     ],
   },
@@ -70,6 +72,7 @@ const NAV: NavGroup[] = [
       { href: '/reports/general-ledger', label: 'General Ledger', permission: PERMISSIONS.reports.view },
       { href: '/reports/aging', label: 'AR / AP Aging', permission: PERMISSIONS.reports.view },
       { href: '/reports/cash-flow', label: 'Cash Flow', permission: PERMISSIONS.reports.view },
+      { href: '/reports/tax', label: 'Tax Report', permission: PERMISSIONS.reports.view },
     ],
   },
   {

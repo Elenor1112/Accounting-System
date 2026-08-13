@@ -22,6 +22,48 @@
       "when": 1786528330870,
       "tag": "0002_account_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786619513569,
+      "tag": "0003_married_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786622578481,
+      "tag": "0004_medical_cammi",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786622999000,
+      "tag": "0005_audit_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786624790779,
+      "tag": "0006_yielding_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786626415989,
+      "tag": "0007_tricky_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786627272505,
+      "tag": "0008_typical_tag",
+      "breakpoints": true
     }
   ]
 }

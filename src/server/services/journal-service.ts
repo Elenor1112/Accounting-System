@@ -3,7 +3,7 @@ import 'server-only';
 import { and, desc, eq, inArray, lte, gte, sql } from 'drizzle-orm';
 
 import { db, type Executor, type Tx } from '@/db';
-import { accounts, fiscalPeriods, journalEntries, journalLines } from '@/db/schema';
+import { accounts, companies, fiscalPeriods, journalEntries, journalLines } from '@/db/schema';
 import {
   requireBranchAccess,
   requirePermission,
@@ -157,6 +157,30 @@ async function resolvePostingPeriod(
   companyId: string,
   date: string,
 ): Promise<string | null> {
+  const [company] = await tx
+    .select({
+      requireOpenPeriod: companies.requireOpenPeriod,
+      maxFutureDays: companies.maxFutureDays,
+    })
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+
+  // Future-dating cap. Nothing previously stopped an entry dated 2099, which
+  // would sit in every forward-looking report until someone noticed.
+  const maxFutureDays = company?.maxFutureDays ?? 30;
+  const limit = new Date();
+  limit.setUTCDate(limit.getUTCDate() + maxFutureDays);
+  const latestAllowed = limit.toISOString().slice(0, 10);
+
+  if (date > latestAllowed) {
+    throw new AccountingError(
+      `Cannot post to ${date}: it is more than ${maxFutureDays} days in the future ` +
+        `(the latest permitted date is ${latestAllowed}). Adjust the date, or raise ` +
+        "the future-dating limit in the company's posting settings.",
+    );
+  }
+
   const [period] = await tx
     .select()
     .from(fiscalPeriods)
@@ -169,9 +193,23 @@ async function resolvePostingPeriod(
     )
     .limit(1);
 
-  // No period defined for the date is allowed: a company that has not set up a
-  // fiscal calendar can still post. Once periods exist, their status rules.
-  if (!period) return null;
+  if (!period) {
+    /**
+     * Fail closed. Previously this returned null and posting continued, so the
+     * period lock applied only to dates someone had already created a period
+     * for — a control that looks enforced and silently is not. A company that
+     * has genuinely not set up a fiscal calendar can still post by turning
+     * `requireOpenPeriod` off, which is a recorded decision rather than a gap.
+     */
+    if (company?.requireOpenPeriod ?? true) {
+      throw new AccountingError(
+        `Cannot post to ${date}: no accounting period covers that date. ` +
+          'Create the fiscal year that contains it before posting, or turn off ' +
+          "\"require an open period\" in the company's posting settings.",
+      );
+    }
+    return null;
+  }
 
   if (period.status !== 'open') {
     throw new AccountingError(
@@ -477,7 +515,17 @@ export async function reverseJournalEntry(
       .from(journalLines)
       .where(eq(journalLines.entryId, entryId));
 
-    const reversalDate = params.reversalDate ?? original.entryDate;
+    /**
+     * A reversal is a new event, dated when it happens.
+     *
+     * Defaulting to the original's date put an August correction back into
+     * June: either June was open, and a month already reported to management
+     * silently changed, or June was closed and the reversal simply failed with
+     * an error about a period the user never chose. Today's date respects the
+     * period controls the same way any other posting does. A user with period
+     * authority can still pass an explicit date.
+     */
+    const reversalDate = params.reversalDate ?? new Date().toISOString().slice(0, 10);
     const periodId = await resolvePostingPeriod(tx, ctx.companyId, reversalDate);
 
     const entryNumber = await allocateDocumentNumber(tx, {

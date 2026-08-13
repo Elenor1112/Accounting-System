@@ -7,6 +7,8 @@ import {
   bankAccounts,
   contacts,
   documents,
+  journalEntries,
+  journalLines,
   paymentAllocations,
   payments,
 } from '@/db/schema';
@@ -149,6 +151,62 @@ export async function createPayment(
       isReceipt ? 'accounts_receivable' : 'accounts_payable',
     );
 
+    /**
+     * The part of the payment that settles documents, and the part that does
+     * not.
+     *
+     * Only the allocated part belongs against AR/AP — that is the amount that
+     * actually clears an invoice. The unapplied residue is money held on the
+     * customer's behalf (or paid to a vendor ahead of a bill), which is a
+     * liability or an asset in its own right:
+     *
+     *   Dr Bank                    10,500
+     *     Cr Accounts Receivable         10,000   (settles the invoice)
+     *     Cr Customer Advances              500   (held on account)
+     *
+     * Crediting the whole 10,500 to AR — the previous behaviour — left a
+     * credit balance sitting in a receivable, presenting a liability as a
+     * negative asset and understating both current assets and current
+     * liabilities.
+     */
+    const unapplied = subtract(amount, allocationTotal);
+
+    const entryLines: Array<Record<string, unknown>> = [
+      {
+        accountId: bankAccount.ledgerAccountId,
+        ...(isReceipt ? { debit: amount } : { credit: amount }),
+        description: `${isReceipt ? 'Received' : 'Paid'} via ${input.method ?? 'bank transfer'}`,
+        branchId: input.branchId ?? null,
+      },
+    ];
+
+    if (gt(allocationTotal, '0')) {
+      entryLines.push({
+        accountId: controlAccount.id,
+        ...(isReceipt ? { credit: allocationTotal } : { debit: allocationTotal }),
+        description: `${isReceipt ? 'Settle receivable' : 'Settle payable'} ${paymentNumber}`,
+        customerId: isReceipt ? input.contactId ?? null : null,
+        vendorId: isReceipt ? null : input.contactId ?? null,
+        branchId: input.branchId ?? null,
+      });
+    }
+
+    if (gt(unapplied, '0')) {
+      const advanceAccount = await resolveAccountByRole(
+        tx,
+        ctx.companyId,
+        isReceipt ? 'customer_advances' : 'vendor_prepayments',
+      );
+      entryLines.push({
+        accountId: advanceAccount.id,
+        ...(isReceipt ? { credit: unapplied } : { debit: unapplied }),
+        description: `Unapplied ${isReceipt ? 'receipt' : 'payment'} ${paymentNumber}`,
+        customerId: isReceipt ? input.contactId ?? null : null,
+        vendorId: isReceipt ? null : input.contactId ?? null,
+        branchId: input.branchId ?? null,
+      });
+    }
+
     const entry = await createJournalEntry(
       ctx,
       {
@@ -160,22 +218,7 @@ export async function createPayment(
         branchId: input.branchId ?? null,
         sourceType: 'payment',
         sourceId: payment.id,
-        lines: [
-          {
-            accountId: bankAccount.ledgerAccountId,
-            ...(isReceipt ? { debit: amount } : { credit: amount }),
-            description: `${isReceipt ? 'Received' : 'Paid'} via ${input.method ?? 'bank transfer'}`,
-            branchId: input.branchId ?? null,
-          },
-          {
-            accountId: controlAccount.id,
-            ...(isReceipt ? { credit: amount } : { debit: amount }),
-            description: `${isReceipt ? 'Settle receivable' : 'Settle payable'} ${paymentNumber}`,
-            customerId: isReceipt ? input.contactId ?? null : null,
-            vendorId: isReceipt ? null : input.contactId ?? null,
-            branchId: input.branchId ?? null,
-          },
-        ] as never,
+        lines: entryLines as never,
         post: true,
       },
       { tx, allowControlAccounts: true },
@@ -316,6 +359,67 @@ export async function allocatePayment(
       })
       .where(eq(payments.id, paymentId));
 
+    /**
+     * Applying an advance is a reclassification, and needs its own entry.
+     *
+     * The original receipt credited Customer Advances because it settled
+     * nothing at the time. Now that it clears an invoice, the liability is
+     * discharged and the receivable goes with it:
+     *
+     *   Dr Customer Advances       amount applied
+     *     Cr Accounts Receivable        amount applied
+     *
+     * Without this the advance would sit in the liability account for ever
+     * while the invoice showed as paid — the subledger would say settled and
+     * the ledger would still carry both balances.
+     */
+    const isReceipt = payment.direction === 'receipt';
+
+    const advanceAccount = await resolveAccountByRole(
+      tx,
+      ctx.companyId,
+      isReceipt ? 'customer_advances' : 'vendor_prepayments',
+    );
+    const controlAccount = await resolveAccountByRole(
+      tx,
+      ctx.companyId,
+      isReceipt ? 'accounts_receivable' : 'accounts_payable',
+    );
+
+    const reclassEntry = await createJournalEntry(
+      ctx,
+      {
+        entryDate: payment.paymentDate,
+        description: `Apply ${isReceipt ? 'advance' : 'prepayment'} ${payment.paymentNumber}`,
+        reference: payment.reference,
+        currencyCode: payment.currencyCode,
+        exchangeRate: payment.exchangeRate,
+        branchId: payment.branchId,
+        sourceType: 'payment_allocation',
+        sourceId: payment.id,
+        lines: [
+          {
+            accountId: advanceAccount.id,
+            ...(isReceipt ? { debit: additional } : { credit: additional }),
+            description: `Applied to ${allocations.length} document(s)`,
+            customerId: isReceipt ? payment.contactId : null,
+            vendorId: isReceipt ? null : payment.contactId,
+            branchId: payment.branchId,
+          },
+          {
+            accountId: controlAccount.id,
+            ...(isReceipt ? { credit: additional } : { debit: additional }),
+            description: `Settle ${isReceipt ? 'receivable' : 'payable'} ${payment.paymentNumber}`,
+            customerId: isReceipt ? payment.contactId : null,
+            vendorId: isReceipt ? null : payment.contactId,
+            branchId: payment.branchId,
+          },
+        ] as never,
+        post: true,
+      },
+      { tx, allowControlAccounts: true },
+    );
+
     for (const allocation of allocations) {
       await refreshDocumentBalance(tx, ctx.companyId, allocation.documentId);
     }
@@ -324,8 +428,188 @@ export async function allocatePayment(
       action: 'payment.allocated',
       entityType: 'payment',
       entityId: paymentId,
-      newValues: { allocated: additional, totalAllocated: newTotal },
+      newValues: {
+        allocated: additional,
+        totalAllocated: newTotal,
+        journalEntryId: reclassEntry.id,
+      },
     });
+  });
+}
+
+/**
+ * Refunds money held on account back to a customer (or recovers a prepayment
+ * from a vendor).
+ *
+ *   Dr Customer Advances       refund amount
+ *     Cr Bank                       refund amount
+ *
+ * Refunds are made against the *advance*, not against an invoice: an invoice
+ * that was overpaid produced an advance in the first place, and a credit note
+ * that was never applied does the same. Refunding straight out of AR would
+ * re-create the negative-asset problem advances exist to avoid.
+ *
+ * The available pool is the contact's unapplied receipts, which is exactly the
+ * balance sitting in the advances account for them.
+ */
+export async function refundContact(
+  ctx: TenantContext,
+  params: {
+    contactId: string;
+    bankAccountId: string;
+    amount: Money;
+    refundDate: string;
+    direction?: PaymentDirection;
+    reference?: string | null;
+    notes?: string | null;
+    branchId?: string | null;
+  },
+): Promise<{ paymentId: string; journalEntryId: string }> {
+  requirePermission(ctx, PERMISSIONS.payments.create);
+  requireBranchAccess(ctx, params.branchId ?? null);
+
+  const amount = money(params.amount);
+  if (!gt(amount, '0')) {
+    throw new ValidationError('Refund amount must be greater than zero');
+  }
+
+  // Refunding a customer pays money out; recovering a vendor prepayment brings
+  // money in. The advance being cleared is the customer's by default.
+  const isCustomerRefund = (params.direction ?? 'disbursement') === 'disbursement';
+
+  return db.transaction(async (tx) => {
+    const [bankAccount] = await tx
+      .select()
+      .from(bankAccounts)
+      .where(
+        and(
+          eq(bankAccounts.id, params.bankAccountId),
+          eq(bankAccounts.companyId, ctx.companyId),
+        ),
+      )
+      .limit(1);
+
+    if (!bankAccount) throw new NotFoundError('Bank account');
+
+    const advanceAccount = await resolveAccountByRole(
+      tx,
+      ctx.companyId,
+      isCustomerRefund ? 'customer_advances' : 'vendor_prepayments',
+    );
+
+    /**
+     * Refuse to refund more than is actually held.
+     *
+     * Read from the ledger rather than from the payments table: the advances
+     * account balance for this contact is the authoritative figure, and it
+     * already accounts for advances that have since been applied to invoices.
+     */
+    const [held] = await tx
+      .select({
+        debit: sql<string>`coalesce(sum(${journalLines.baseDebit}), 0)`,
+        credit: sql<string>`coalesce(sum(${journalLines.baseCredit}), 0)`,
+      })
+      .from(journalLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalLines.entryId))
+      .where(
+        and(
+          eq(journalLines.companyId, ctx.companyId),
+          eq(journalLines.accountId, advanceAccount.id),
+          isCustomerRefund
+            ? eq(journalLines.customerId, params.contactId)
+            : eq(journalLines.vendorId, params.contactId),
+          sql`${journalEntries.status} in ('posted', 'reversed')`,
+        ),
+      );
+
+    // Advances are credit-normal for a customer, debit-normal for a vendor.
+    const available = isCustomerRefund
+      ? subtract(held?.credit ?? '0', held?.debit ?? '0')
+      : subtract(held?.debit ?? '0', held?.credit ?? '0');
+
+    if (gt(amount, available)) {
+      throw new AccountingError(
+        `Cannot refund ${amount}: only ${available} is held on account for this contact. ` +
+          'Apply a credit note or record the overpayment first.',
+      );
+    }
+
+    const paymentNumber = await allocateDocumentNumber(tx, {
+      companyId: ctx.companyId,
+      documentType: 'payment',
+      date: new Date(params.refundDate),
+    });
+
+    const [payment] = await tx
+      .insert(payments)
+      .values({
+        companyId: ctx.companyId,
+        branchId: params.branchId ?? null,
+        direction: isCustomerRefund ? 'disbursement' : 'receipt',
+        paymentNumber,
+        contactId: params.contactId,
+        paymentDate: params.refundDate,
+        method: 'bank_transfer',
+        reference: params.reference ?? null,
+        currencyCode: bankAccount.currencyCode,
+        exchangeRate: '1',
+        amount,
+        // A refund settles no document: it discharges the advance itself.
+        allocatedAmount: amount,
+        unappliedAmount: '0',
+        bankAccountId: params.bankAccountId,
+        status: 'draft',
+        notes: params.notes ?? `Refund of amounts held on account`,
+        createdById: ctx.userId,
+      })
+      .returning();
+
+    if (!payment) throw new ConflictError('Failed to create refund');
+
+    const entry = await createJournalEntry(
+      ctx,
+      {
+        entryDate: params.refundDate,
+        description: `Refund ${paymentNumber}`,
+        reference: params.reference,
+        currencyCode: bankAccount.currencyCode,
+        branchId: params.branchId ?? null,
+        sourceType: 'refund',
+        sourceId: payment.id,
+        lines: [
+          {
+            accountId: advanceAccount.id,
+            [isCustomerRefund ? 'debit' : 'credit']: amount,
+            description: `Refund of amounts held on account`,
+            customerId: isCustomerRefund ? params.contactId : null,
+            vendorId: isCustomerRefund ? null : params.contactId,
+            branchId: params.branchId ?? null,
+          },
+          {
+            accountId: bankAccount.ledgerAccountId,
+            [isCustomerRefund ? 'credit' : 'debit']: amount,
+            description: `Refund ${paymentNumber}`,
+            branchId: params.branchId ?? null,
+          },
+        ] as never,
+        post: true,
+      },
+      { tx },
+    );
+
+    await tx
+      .update(payments)
+      .set({ status: 'posted', journalEntryId: entry.id, updatedAt: sql`now()` })
+      .where(eq(payments.id, payment.id));
+
+    await recordAudit(tx, ctx, {
+      action: 'payment.refunded',
+      entityType: 'payment',
+      entityId: payment.id,
+      newValues: { paymentNumber, amount, contactId: params.contactId },
+    });
+
+    return { paymentId: payment.id, journalEntryId: entry.id };
   });
 }
 

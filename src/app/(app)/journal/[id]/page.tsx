@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { JournalActions } from '@/components/journal-actions';
 import { Badge, Card, PageHeader, SectionTitle, statusTone, TableWrap } from '@/components/ui';
 import * as fmt from '@/lib/format';
 import { NotFoundError } from '@/server/errors';
+import { can } from '@/server/auth/context';
+import { PERMISSIONS } from '@/server/auth/permissions';
 import { requireTenantContext } from '@/server/auth/session';
 import { getJournalEntry } from '@/server/services/journal-service';
 
@@ -43,7 +46,19 @@ export default async function JournalEntryPage({
       <PageHeader
         title={entry.entryNumber}
         description={entry.description ?? undefined}
-        actions={<Badge tone={statusTone(entry.status)}>{fmt.humanise(entry.status)}</Badge>}
+        actions={
+          <>
+            <Badge tone={statusTone(entry.status)}>{fmt.humanise(entry.status)}</Badge>
+            <JournalActions
+              entryId={entry.id}
+              status={entry.status}
+              isReversed={Boolean(entry.reversedByEntryId)}
+              canPost={can(ctx, PERMISSIONS.transactions.post)}
+              canReverse={can(ctx, PERMISSIONS.transactions.reverse)}
+              canCreate={can(ctx, PERMISSIONS.transactions.create)}
+            />
+          </>
+        }
       />
 
       {entry.reversesEntryId || entry.reversedByEntryId ? (

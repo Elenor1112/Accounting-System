@@ -16,6 +16,8 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   id?: string;
+  /** Set when the document entered an approval chain instead of posting. */
+  message?: string;
 }
 
 /**
@@ -28,11 +30,24 @@ export interface ActionResult {
 export async function postDocumentAction(documentId: string): Promise<ActionResult> {
   try {
     const ctx = await requireTenantContext();
-    await postDocument(ctx, documentId);
+    const result = await postDocument(ctx, documentId);
     revalidatePath('/invoices');
     revalidatePath('/bills');
     revalidatePath(`/invoices/${documentId}`);
     revalidatePath(`/bills/${documentId}`);
+
+    // An amount above a configured threshold does not post on this click: it
+    // now waits for the signatures the workflow requires. Say so, rather than
+    // reporting a success the ledger did not receive.
+    if ('pendingApproval' in result) {
+      return {
+        ok: true,
+        message:
+          `Submitted for approval: ${result.stepsRequired} ` +
+          `${result.stepsRequired === 1 ? 'approval is' : 'approvals are'} required ` +
+          'before this document can post to the ledger.',
+      };
+    }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toMessage(err) };

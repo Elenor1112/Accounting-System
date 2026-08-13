@@ -39,10 +39,20 @@ export const contacts = pgTable(
     displayName: text('display_name').notNull(),
     legalName: text('legal_name'),
 
+    /** Named individual to deal with, distinct from the company itself. */
+    contactPerson: text('contact_person'),
     email: text('email'),
     phone: text('phone'),
+    mobile: text('mobile'),
     website: text('website'),
     taxIdentifier: text('tax_identifier'),
+
+    /**
+     * A free-text grouping the client defines (wholesale, retail, key account).
+     * Deliberately not an enum: every business segments its customers
+     * differently, and the point of this system is configuration over code.
+     */
+    category: text('category'),
 
     billingAddress: jsonb('billing_address').notNull().default({}),
     shippingAddress: jsonb('shipping_address').notNull().default({}),

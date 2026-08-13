@@ -1,0 +1,4 @@
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_customer_company_fk" FOREIGN KEY ("customer_id","company_id") REFERENCES "public"."contacts"("id","company_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_vendor_company_fk" FOREIGN KEY ("vendor_id","company_id") REFERENCES "public"."contacts"("id","company_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "documents" ADD CONSTRAINT "documents_total_consistent_ck" CHECK (abs("documents"."total" - ("documents"."subtotal" - "documents"."discount_total" + "documents"."tax_total")) <= 0.000001);--> statement-breakpoint
+ALTER TABLE "documents" ADD CONSTRAINT "documents_balance_consistent_ck" CHECK (abs("documents"."balance_due" - ("documents"."total" - "documents"."amount_paid")) <= 0.000001);

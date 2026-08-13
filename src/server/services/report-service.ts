@@ -1,21 +1,35 @@
 import 'server-only';
 
-import { and, asc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
 
 import { db } from '@/db';
 import {
   accounts,
   budgetLines,
   budgets,
+  documentLines,
   documents,
   journalEntries,
   journalLines,
+  taxes,
 } from '@/db/schema';
 import { requirePermission, type TenantContext } from '@/server/auth/context';
 import { PERMISSIONS } from '@/server/auth/permissions';
-import { add, isZero, money, round, subtract, sum, type Money } from '@/lib/money';
+import {
+  add,
+  divide,
+  isZero,
+  money,
+  multiply,
+  round,
+  subtract,
+  sum,
+  ZERO as ZERO_MONEY,
+  type Money,
+} from '@/lib/money';
 
 import { postedEntryFilter } from './journal-service';
+import { getLastClosedDate } from './year-end-service';
 
 export interface ReportRange {
   from: string;
@@ -182,6 +196,13 @@ export async function getProfitAndLoss(ctx: TenantContext, range: ReportRange) {
   };
 }
 
+/** The day after `date`, as an ISO string. */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Balance Sheet as at a date.
  *
@@ -196,6 +217,18 @@ export async function getBalanceSheet(
 ) {
   requirePermission(ctx, PERMISSIONS.reports.view);
 
+  /**
+   * Close-aware accumulation.
+   *
+   * Retained earnings that has already been closed sits in the equity account
+   * as a real posted balance. Profit since that close has not, so the sheet
+   * still has to compute it — but only from the day *after* the last close, or
+   * the closing entry would be counted twice: once in the retained earnings
+   * account balance below, and again here.
+   */
+  const lastClosedDate = await getLastClosedDate(ctx);
+  const unclosedFrom = lastClosedDate ? nextDay(lastClosedDate) : undefined;
+
   const rows = await getAccountBalances(ctx, {
     to: params.asOf,
     branchIds: params.branchIds,
@@ -205,8 +238,19 @@ export async function getBalanceSheet(
   const liabilities = rows.filter((r) => r.type === 'liability' && !isZero(r.balance));
   const equity = rows.filter((r) => r.type === 'equity' && !isZero(r.balance));
 
-  const revenue = rows.filter((r) => r.type === 'revenue');
-  const expenses = rows.filter((r) => r.type === 'expense');
+  // Profit earned since the last close. Where no year has been closed this is
+  // every revenue and expense line ever posted, which is the previous
+  // behaviour and remains correct for a company in its first year.
+  const unclosedRows = unclosedFrom
+    ? await getAccountBalances(ctx, {
+        from: unclosedFrom,
+        to: params.asOf,
+        branchIds: params.branchIds,
+      })
+    : rows;
+
+  const revenue = unclosedRows.filter((r) => r.type === 'revenue');
+  const expenses = unclosedRows.filter((r) => r.type === 'expense');
   const accumulatedProfit = subtract(
     sum(revenue.map((r) => r.balance)),
     sum(expenses.map((r) => r.balance)),
@@ -226,14 +270,204 @@ export async function getBalanceSheet(
       { title: 'Liabilities', accounts: liabilities, total: round(totalLiabilities, p) },
       { title: 'Equity', accounts: equity, total: round(sum(equity.map((r) => r.balance)), p) },
     ] satisfies ReportSection[],
-    /** Current-period profit, not yet closed to retained earnings. */
+    /** Profit since the last year-end close, not yet in retained earnings. */
     accumulatedProfit: round(accumulatedProfit, p),
+    /** Null until a year has been closed. Drives the equity caption. */
+    lastClosedDate,
     totalAssets: round(totalAssets, p),
     totalLiabilities: round(totalLiabilities, p),
     totalEquity: round(totalEquity, p),
     /** Assets − (Liabilities + Equity). Must be zero. */
     difference: round(difference, p),
     isBalanced: isZero(difference),
+  };
+}
+
+/**
+ * Tax / VAT return for a period (spec §17, audit finding: no tax report).
+ *
+ * Output tax less input tax, broken down by rate with the taxable base — the
+ * single report a business is legally obliged to produce. The data was already
+ * posted correctly; nothing assembled it.
+ *
+ * Two properties make this defensible to a tax authority:
+ *
+ *   - It is built from `document_lines` grouped by tax, so each figure can be
+ *     drilled back to the invoices and bills that produced it.
+ *   - It is **cross-checked against the tax control accounts in the ledger**,
+ *     and reports the difference rather than hiding it. A mismatch means
+ *     something moved the tax account outside the document subledger (a manual
+ *     journal entry, most likely) and the filer needs to know before filing,
+ *     not after an assessment.
+ */
+export async function getTaxReport(
+  ctx: TenantContext,
+  range: ReportRange,
+): Promise<{
+  range: ReportRange;
+  rows: Array<{
+    taxId: string | null;
+    code: string;
+    name: string;
+    ratePercent: Money;
+    taxableSales: Money;
+    outputTax: Money;
+    taxablePurchases: Money;
+    inputTax: Money;
+    netTax: Money;
+  }>;
+  totalTaxableSales: Money;
+  totalOutputTax: Money;
+  totalTaxablePurchases: Money;
+  totalInputTax: Money;
+  /** Positive means payable to the authority; negative means reclaimable. */
+  netTaxPayable: Money;
+  /** Ledger balances for the same period, and any unreconciled difference. */
+  reconciliation: {
+    ledgerOutputTax: Money;
+    ledgerInputTax: Money;
+    outputDifference: Money;
+    inputDifference: Money;
+    isReconciled: boolean;
+  };
+}> {
+  requirePermission(ctx, PERMISSIONS.reports.view);
+
+  /**
+   * Only posted documents count. A draft invoice carries a tax amount but has
+   * not entered the ledger, and including it would put tax on a return that
+   * the tax account cannot support.
+   */
+  const rows = await db
+    .select({
+      taxId: documentLines.taxId,
+      code: taxes.code,
+      name: taxes.name,
+      ratePercent: documentLines.taxRatePercent,
+      direction: documents.direction,
+      documentType: documents.documentType,
+      taxable: sql<string>`coalesce(sum(${documentLines.lineSubtotal}), 0)`,
+      tax: sql<string>`coalesce(sum(${documentLines.taxAmount}), 0)`,
+    })
+    .from(documentLines)
+    .innerJoin(documents, eq(documents.id, documentLines.documentId))
+    .leftJoin(taxes, eq(taxes.id, documentLines.taxId))
+    .where(
+      and(
+        eq(documents.companyId, ctx.companyId),
+        isNotNull(documents.journalEntryId),
+        sql`${documents.status} not in ('void', 'cancelled', 'draft', 'pending_approval')`,
+        gte(documents.issueDate, range.from),
+        lte(documents.issueDate, range.to),
+        sql`${documentLines.taxAmount} <> 0`,
+      ),
+    )
+    .groupBy(
+      documentLines.taxId,
+      taxes.code,
+      taxes.name,
+      documentLines.taxRatePercent,
+      documents.direction,
+      documents.documentType,
+    );
+
+  // Group sales and purchases per tax, netting credit notes off each side.
+  const byTax = new Map<
+    string,
+    {
+      taxId: string | null;
+      code: string;
+      name: string;
+      ratePercent: Money;
+      taxableSales: Money;
+      outputTax: Money;
+      taxablePurchases: Money;
+      inputTax: Money;
+    }
+  >();
+
+  for (const row of rows) {
+    const key = `${row.taxId ?? 'none'}:${row.ratePercent}`;
+    const entry = byTax.get(key) ?? {
+      taxId: row.taxId,
+      code: row.code ?? '—',
+      name: row.name ?? `Tax at ${row.ratePercent}%`,
+      ratePercent: money(row.ratePercent),
+      taxableSales: ZERO_MONEY,
+      outputTax: ZERO_MONEY,
+      taxablePurchases: ZERO_MONEY,
+      inputTax: ZERO_MONEY,
+    };
+
+    // A credit note reverses the supply it corrects, so it reduces the base
+    // and the tax rather than adding to the other side of the return.
+    const isCredit =
+      row.documentType === 'credit_note' || row.documentType === 'debit_note';
+    const sign = isCredit ? '-1' : '1';
+    const taxable = multiply(row.taxable, sign);
+    const tax = multiply(row.tax, sign);
+
+    if (row.direction === 'outbound') {
+      entry.taxableSales = add(entry.taxableSales, taxable);
+      entry.outputTax = add(entry.outputTax, tax);
+    } else {
+      entry.taxablePurchases = add(entry.taxablePurchases, taxable);
+      entry.inputTax = add(entry.inputTax, tax);
+    }
+
+    byTax.set(key, entry);
+  }
+
+  const p = ctx.currencyPrecision;
+  const grouped = [...byTax.values()]
+    .sort((a, b) => a.code.localeCompare(b.code))
+    .map((row) => ({
+      ...row,
+      taxableSales: round(row.taxableSales, p),
+      outputTax: round(row.outputTax, p),
+      taxablePurchases: round(row.taxablePurchases, p),
+      inputTax: round(row.inputTax, p),
+      netTax: round(subtract(row.outputTax, row.inputTax), p),
+    }));
+
+  const totalOutputTax = sum(grouped.map((r) => r.outputTax));
+  const totalInputTax = sum(grouped.map((r) => r.inputTax));
+
+  /**
+   * The tie-out. Both control accounts are read for the same window; if the
+   * subledger and the ledger disagree the report says so instead of quietly
+   * presenting a figure that cannot be supported.
+   */
+  const ledgerRows = await getAccountBalances(ctx, {
+    from: range.from,
+    to: range.to,
+  });
+
+  const outputAccount = ledgerRows.find((r) => r.subtype === 'tax_payable');
+  const inputAccount = ledgerRows.find(
+    (r) => r.type === 'asset' && r.code.startsWith('115'),
+  );
+
+  const ledgerOutputTax = outputAccount ? money(outputAccount.balance) : ZERO_MONEY;
+  const ledgerInputTax = inputAccount ? money(inputAccount.balance) : ZERO_MONEY;
+  const outputDifference = subtract(totalOutputTax, ledgerOutputTax);
+  const inputDifference = subtract(totalInputTax, ledgerInputTax);
+
+  return {
+    range,
+    rows: grouped,
+    totalTaxableSales: round(sum(grouped.map((r) => r.taxableSales)), p),
+    totalOutputTax: round(totalOutputTax, p),
+    totalTaxablePurchases: round(sum(grouped.map((r) => r.taxablePurchases)), p),
+    totalInputTax: round(totalInputTax, p),
+    netTaxPayable: round(subtract(totalOutputTax, totalInputTax), p),
+    reconciliation: {
+      ledgerOutputTax: round(ledgerOutputTax, p),
+      ledgerInputTax: round(ledgerInputTax, p),
+      outputDifference: round(outputDifference, p),
+      inputDifference: round(inputDifference, p),
+      isReconciled: isZero(outputDifference) && isZero(inputDifference),
+    },
   };
 }
 
@@ -494,7 +728,7 @@ export async function getBudgetVsActual(
     const variance = subtract(actual, budgeted);
     const variancePercent = isZero(budgeted)
       ? '0'
-      : String(((Number(actual) - Number(budgeted)) / Number(budgeted)) * 100);
+      : round(multiply(divide(variance, budgeted), '100'), 2);
 
     return { ...row, budgeted, actual, variance, variancePercent };
   });

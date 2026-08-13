@@ -26,7 +26,23 @@ export type AccountRole =
   | 'default_sales'
   | 'default_cash'
   | 'default_bank'
-  | 'rounding';
+  | 'rounding'
+  /** Unapplied customer receipts: a liability, not negative AR. */
+  | 'customer_advances'
+  /** Unapplied payments to vendors: an asset, not negative AP. */
+  | 'vendor_prepayments'
+  /** Uncollectible receivables written off. */
+  | 'bad_debt_expense'
+  /** Amounts taken out by the owner, kept apart from invested capital. */
+  | 'owner_drawings'
+  /** Stock on hand. Relieved automatically when an inventory product sells. */
+  | 'inventory_asset'
+  /** The cost side of a sale, posted against inventory. */
+  | 'cost_of_goods_sold'
+  /** Fixed assets at cost, and the contra that accumulates depreciation. */
+  | 'fixed_assets'
+  | 'accumulated_depreciation'
+  | 'depreciation_expense';
 
 export interface TemplateAccount {
   code: string;
@@ -99,6 +115,28 @@ const CORE: TemplateAccount[] = [
     role: 'purchase_tax_receivable',
   },
   {
+    code: '1155',
+    name: 'Inventory',
+    type: 'asset',
+    subtype: 'inventory',
+    parent: '1100',
+    role: 'inventory_asset',
+    description:
+      'Stock on hand at weighted average cost. Maintained by the inventory ' +
+      'subledger — it is relieved automatically when a stocked product sells.',
+  },
+  {
+    code: '1160',
+    name: 'Vendor Prepayments',
+    type: 'asset',
+    subtype: 'other_current_asset',
+    parent: '1100',
+    role: 'vendor_prepayments',
+    description:
+      'Payments made to vendors ahead of a bill. The mirror of Customer ' +
+      'Advances: an amount owed to us, not a negative liability.',
+  },
+  {
     code: '1200',
     name: 'Fixed Assets',
     type: 'asset',
@@ -112,6 +150,7 @@ const CORE: TemplateAccount[] = [
     type: 'asset',
     subtype: 'fixed_asset',
     parent: '1200',
+    role: 'fixed_assets',
   },
   {
     code: '1290',
@@ -119,6 +158,9 @@ const CORE: TemplateAccount[] = [
     type: 'asset',
     subtype: 'accumulated_depreciation',
     parent: '1200',
+    role: 'accumulated_depreciation',
+    description:
+      'Contra-asset. Credited by each depreciation run; never written to by hand.',
   },
 
   // ---- Liabilities --------------------------------------------------------
@@ -163,6 +205,18 @@ const CORE: TemplateAccount[] = [
     parent: '2100',
   },
   {
+    code: '2140',
+    name: 'Customer Advances',
+    type: 'liability',
+    subtype: 'other_current_liability',
+    parent: '2100',
+    role: 'customer_advances',
+    description:
+      'Receipts not yet applied to an invoice. Money held on a customer’s ' +
+      'behalf is a liability; leaving it in Accounts Receivable would present ' +
+      'it as a negative asset and understate both assets and liabilities.',
+  },
+  {
     code: '2200',
     name: 'Long-Term Liabilities',
     type: 'liability',
@@ -181,6 +235,19 @@ const CORE: TemplateAccount[] = [
   // ---- Equity -------------------------------------------------------------
   { code: '3000', name: 'Equity', type: 'equity', subtype: 'equity', isPostable: false },
   { code: '3100', name: "Owner's Capital", type: 'equity', subtype: 'equity', parent: '3000' },
+  {
+    code: '3150',
+    name: "Owner's Drawings",
+    type: 'equity',
+    subtype: 'equity',
+    parent: '3000',
+    role: 'owner_drawings',
+    description:
+      'Amounts withdrawn by the owner. A contra-equity account: without it a ' +
+      'withdrawal is either netted against invested capital, losing the ' +
+      'distinction every partnership and sole-trader account requires, or ' +
+      'miscoded to an expense and understating profit.',
+  },
   {
     code: '3200',
     name: 'Retained Earnings',
@@ -246,6 +313,10 @@ const CORE: TemplateAccount[] = [
     type: 'expense',
     subtype: 'cost_of_goods_sold',
     parent: '5000',
+    role: 'cost_of_goods_sold',
+    description:
+      'Posted automatically when a stocked product sells, at weighted average ' +
+      'cost, so revenue and its cost land in the same period.',
   },
   {
     code: '6000',
@@ -291,6 +362,17 @@ const CORE: TemplateAccount[] = [
     parent: '6000',
   },
   {
+    code: '6650',
+    name: 'Bad Debt Expense',
+    type: 'expense',
+    subtype: 'operating_expense',
+    parent: '6000',
+    role: 'bad_debt_expense',
+    description:
+      'Receivables judged uncollectible. Without it AR stays overstated by ' +
+      'every known bad debt.',
+  },
+  {
     code: '6700',
     name: 'Bank Charges',
     type: 'expense',
@@ -303,6 +385,7 @@ const CORE: TemplateAccount[] = [
     type: 'expense',
     subtype: 'depreciation_expense',
     parent: '6000',
+    role: 'depreciation_expense',
   },
   {
     code: '6900',

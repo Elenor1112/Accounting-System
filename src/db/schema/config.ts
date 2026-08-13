@@ -283,7 +283,16 @@ export const approvals = pgTable(
       .default('pending'),
     actorId: uuid('actor_id'),
     comment: text('comment'),
-    decidedAt: timestamps.createdAt,
+    /**
+     * There is deliberately no `decidedAt` column. It previously existed as
+     * `decidedAt: timestamps.createdAt`, which reused the *same column object*
+     * and therefore mapped `decided_at` onto `created_at` — so every INSERT
+     * named `created_at` twice and Postgres rejected it. Nothing ever inserted
+     * an approval row until the workflow engine was wired into posting, which
+     * is why a broken table definition survived this long. The decision time
+     * is `updatedAt`, set when the row moves off `pending`, and that is what
+     * `getApprovalStatus` reports.
+     */
     ...timestamps,
   },
   (t) => [index('approvals_entity_idx').on(t.companyId, t.entityType, t.entityId)],

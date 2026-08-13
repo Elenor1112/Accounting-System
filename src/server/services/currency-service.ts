@@ -7,6 +7,7 @@ import { currencies, exchangeRates } from '@/db/schema';
 import { requirePermission, type TenantContext } from '@/server/auth/context';
 import { PERMISSIONS } from '@/server/auth/permissions';
 import { AccountingError } from '@/server/errors';
+import { divideRate, isZero, lte as lteMoney } from '@/lib/money';
 
 /** Minor-unit counts for currencies that are not the usual 2 decimals. */
 const NON_STANDARD_PRECISION: Record<string, number> = {
@@ -72,8 +73,12 @@ export async function resolveExchangeRate(
     .orderBy(desc(exchangeRates.effectiveDate))
     .limit(1);
 
-  if (inverse && Number(inverse.rate) !== 0) {
-    return String(1 / Number(inverse.rate));
+  // Exact reciprocal at rate scale. `1 / Number(rate)` produced a 17-digit
+  // float string that the numeric(20,10) column then truncated, so every
+  // inverse-rate conversion was computed from a rate that was not the true
+  // reciprocal and could not be reconciled to any published figure.
+  if (inverse && !isZero(inverse.rate)) {
+    return divideRate('1', inverse.rate);
   }
 
   throw new AccountingError(
@@ -95,7 +100,7 @@ export async function upsertExchangeRate(
 ): Promise<void> {
   requirePermission(ctx, PERMISSIONS.settings.manage);
 
-  if (Number(params.rate) <= 0) {
+  if (lteMoney(params.rate, '0')) {
     throw new AccountingError('Exchange rate must be greater than zero');
   }
 

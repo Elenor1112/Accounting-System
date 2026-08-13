@@ -24,6 +24,7 @@ import {
   timestamps,
 } from './_shared';
 import { users } from './identity';
+import { contacts } from './contacts';
 import { branches, companies } from './tenancy';
 
 /**
@@ -302,6 +303,28 @@ export const journalLines = pgTable(
       columns: [t.accountId, t.companyId],
       foreignColumns: [accounts.id, accounts.companyId],
       name: 'journal_lines_account_company_fk',
+    }).onDelete('restrict'),
+
+    /**
+     * Tenant-carrying foreign keys on the reporting dimensions.
+     *
+     * These were the one place the composite-FK discipline was not applied:
+     * `customerId` and `vendorId` had no constraint at all, so a line could
+     * name a contact that did not exist, or one belonging to another company —
+     * and the AR/AP-by-customer breakdown would silently omit or misattribute
+     * it. Carrying `companyId` into the reference makes cross-tenant
+     * contamination impossible in the database, exactly as it already was for
+     * accounts and entries.
+     */
+    foreignKey({
+      columns: [t.customerId, t.companyId],
+      foreignColumns: [contacts.id, contacts.companyId],
+      name: 'journal_lines_customer_company_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.vendorId, t.companyId],
+      foreignColumns: [contacts.id, contacts.companyId],
+      name: 'journal_lines_vendor_company_fk',
     }).onDelete('restrict'),
 
     check('journal_lines_debit_nonneg_ck', sql`${t.debit} >= 0`),

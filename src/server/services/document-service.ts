@@ -3,9 +3,10 @@ import 'server-only';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { db, type Tx } from '@/db';
-import { contacts, documentLines, documents, paymentAllocations, taxes } from '@/db/schema';
+import { approvals, contacts, documentLines, documents, paymentAllocations, taxes } from '@/db/schema';
 import {
   requireBranchAccess,
+  requireDifferentApprover,
   requirePermission,
   type TenantContext,
 } from '@/server/auth/context';
@@ -17,13 +18,15 @@ import {
   type DiscountType,
   type LineResult,
 } from '@/lib/line-calculator';
-import { isZero, money, subtract, type Money } from '@/lib/money';
+import { divide, isZero, money, subtract, type Money } from '@/lib/money';
 
 import { recordAudit } from './audit-service';
 import { resolveAccountByRole } from './account-service';
 import { resolveExchangeRate } from './currency-service';
 import { createJournalEntry, reverseJournalEntry } from './journal-service';
 import { allocateDocumentNumber } from './numbering-service';
+import { postCostOfGoodsSold, recordMovement } from './inventory-service';
+import { getApplicableSteps, startApprovalChain } from './workflow-service';
 
 export type DocumentRow = typeof documents.$inferSelect;
 export type DocumentDirection = 'outbound' | 'inbound';
@@ -38,6 +41,11 @@ export interface DocumentLineInput {
   taxId?: string | null;
   branchId?: string | null;
   projectId?: string | null;
+  /**
+   * The stocked item being sold or bought. Setting this is what makes posting
+   * the document move stock and, on a sale, recognise cost of goods sold.
+   */
+  productId?: string | null;
 }
 
 export interface CreateDocumentInput {
@@ -53,6 +61,14 @@ export interface CreateDocumentInput {
   notes?: string | null;
   terms?: string | null;
   lines: DocumentLineInput[];
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Guards ids taken from URLs before they reach a uuid column. */
+function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
 }
 
 /** Permissions differ for sales vs purchase documents. */
@@ -240,6 +256,7 @@ export async function createDocument(
         lineTotal: c.result.lineTotal,
         branchId: c.input.branchId ?? input.branchId ?? null,
         projectId: c.input.projectId ?? null,
+        productId: c.input.productId ?? null,
       })),
     );
 
@@ -260,6 +277,58 @@ export async function createDocument(
 }
 
 /**
+ * Whether a document may proceed to the ledger, or must wait for signatures.
+ *
+ * Three cases, in order:
+ *   - no workflow configured for this type/amount → post now;
+ *   - a chain exists and every step is approved → post now;
+ *   - a chain applies and steps are outstanding → block.
+ *
+ * A rejected step blocks outright: the document must be resubmitted rather
+ * than quietly reopened by another post attempt.
+ */
+async function resolveApprovalState(
+  tx: Tx,
+  ctx: TenantContext,
+  document: DocumentRow,
+): Promise<{ blocked: boolean; alreadyOpen: boolean; stepsRequired: number }> {
+  const existing = await tx
+    .select({ status: approvals.status })
+    .from(approvals)
+    .where(
+      and(
+        eq(approvals.companyId, ctx.companyId),
+        eq(approvals.entityType, 'document'),
+        eq(approvals.entityId, document.id),
+      ),
+    );
+
+  if (existing.length > 0) {
+    const rejected = existing.filter((a) => a.status === 'rejected').length;
+    if (rejected > 0) {
+      throw new ConflictError(
+        'This document was rejected in approval. Amend it and resubmit it for approval ' +
+          'rather than posting it directly.',
+      );
+    }
+    const pending = existing.filter((a) => a.status === 'pending').length;
+    return {
+      blocked: pending > 0,
+      alreadyOpen: true,
+      stepsRequired: existing.length,
+    };
+  }
+
+  const steps = await getApplicableSteps(tx, {
+    companyId: ctx.companyId,
+    documentType: document.documentType,
+    amount: document.total,
+  });
+
+  return { blocked: steps.length > 0, alreadyOpen: false, stepsRequired: steps.length };
+}
+
+/**
  * Posts a document to the ledger.
  *
  * The entry for a customer invoice is:
@@ -275,7 +344,7 @@ export async function createDocument(
 export async function postDocument(
   ctx: TenantContext,
   documentId: string,
-): Promise<{ journalEntryId: string }> {
+): Promise<{ journalEntryId: string } | { pendingApproval: true; stepsRequired: number }> {
   return db.transaction(async (tx) => {
     const [document] = await tx
       .select()
@@ -305,6 +374,80 @@ export async function postDocument(
       throw new AccountingError('A document with a zero total cannot be posted');
     }
 
+    /**
+     * Approval gate (spec §21).
+     *
+     * Before this existed, a configured threshold — "bills over 100,000 need
+     * the finance manager" — was displayed in Settings and enforced nowhere:
+     * `postDocument` posted straight to the ledger on the single permission
+     * check above. Now the chain is resolved first, and a document that needs
+     * signatures stops here with its approval rows created rather than
+     * reaching the ledger.
+     */
+    const approvalState = await resolveApprovalState(tx, ctx, document);
+
+    if (approvalState.blocked) {
+      // Opens the chain on first submission; a document already waiting simply
+      // stays where it is rather than accruing a duplicate set of steps.
+      if (!approvalState.alreadyOpen) {
+        await startApprovalChain(tx, ctx, {
+          entityType: 'document',
+          entityId: document.id,
+          documentType: document.documentType,
+          amount: document.total,
+        });
+
+        await tx
+          .update(documents)
+          .set({ status: 'pending_approval', updatedAt: sql`now()` })
+          .where(eq(documents.id, documentId));
+
+        await recordAudit(tx, ctx, {
+          action: 'document.submitted_for_approval',
+          entityType: 'document',
+          entityId: documentId,
+          previousValues: { status: document.status },
+          newValues: {
+            status: 'pending_approval',
+            stepsRequired: approvalState.stepsRequired,
+            total: document.total,
+          },
+        });
+      }
+
+      return { pendingApproval: true as const, stepsRequired: approvalState.stepsRequired };
+    }
+
+    // Either no workflow applies or every step is approved. The originator
+    // still may not be the one pushing it into the ledger.
+    requireDifferentApprover(
+      ctx,
+      document.createdById,
+      PERMISSIONS.selfApproval.documents,
+      document.documentType.replace('_', ' '),
+    );
+
+    return postDocumentToLedger(tx, ctx, document);
+  });
+}
+
+/**
+ * Builds and posts the journal entry for an already-authorised document.
+ *
+ * Split out of `postDocument` so the approval path can reach the ledger
+ * through exactly the same code rather than a parallel implementation — a
+ * second posting routine is how the first control came to be bypassed. All
+ * authorisation happens in the callers; by the time this runs the document is
+ * cleared to post.
+ */
+async function postDocumentToLedger(
+  tx: Tx,
+  ctx: TenantContext,
+  document: DocumentRow,
+): Promise<{ journalEntryId: string }> {
+  const documentId = document.id;
+
+  {
     const lines = await tx
       .select()
       .from(documentLines)
@@ -395,15 +538,108 @@ export async function postDocument(
       })
       .where(eq(documents.id, documentId));
 
+    /**
+     * Cost of goods sold (spec §16).
+     *
+     * A sale of a stocked product requires a second entry that the revenue
+     * entry above does not contain:
+     *
+     *     Dr Cost of Goods Sold      quantity × weighted average
+     *       Cr Inventory                  same
+     *
+     * Posted here, inside the document's own transaction, so revenue and its
+     * cost land together or not at all. Without it revenue was recognised with
+     * no matching cost: gross profit overstated by the cost of every unit sold,
+     * and inventory on the balance sheet growing without bound.
+     *
+     * A credit note returns the goods, so stock comes back in instead.
+     * Purchases are skipped — a bill already debits inventory through its own
+     * line, and the movement is recorded without a second ledger effect.
+     */
+    const stockLines = lines.filter((line) => line.productId);
+
+    if (stockLines.length > 0) {
+      if (isSale) {
+        await postCostOfGoodsSold(tx, ctx, {
+          lines: stockLines.map((line) => ({
+            productId: line.productId!,
+            quantity: line.quantity,
+            branchId: line.branchId ?? document.branchId,
+          })),
+          movementDate: document.issueDate,
+          sourceType: document.documentType,
+          sourceId: document.id,
+          isReturn: isCredit,
+        });
+      } else {
+        // Purchase: the bill's own entry already carried the value to the
+        // inventory account, so the movement records quantity and cost only.
+        for (const line of stockLines) {
+          await recordMovement(
+            ctx,
+            {
+              productId: line.productId!,
+              movementDate: document.issueDate,
+              quantity: line.quantity,
+              // Unit cost net of tax and discount: recoverable tax is not part
+              // of the cost of the asset.
+              unitCost: divide(line.lineSubtotal, line.quantity),
+              movementType: isCredit ? 'return_out' : 'purchase',
+              sourceType: document.documentType,
+              sourceId: document.id,
+              journalEntryId: entry.id,
+              branchId: line.branchId ?? document.branchId,
+            },
+            { tx, postToLedger: false },
+          );
+        }
+      }
+    }
+
     await recordAudit(tx, ctx, {
       action: 'document.posted',
       entityType: 'document',
       entityId: documentId,
-      newValues: { journalEntryId: entry.id, total: document.total },
+      newValues: {
+        journalEntryId: entry.id,
+        total: document.total,
+        stockLines: stockLines.length,
+      },
     });
 
     return { journalEntryId: entry.id };
-  });
+  }
+}
+
+/**
+ * Posts a document whose approval chain has just completed.
+ *
+ * Called by `decideApproval` when the final step is approved, inside that
+ * decision's transaction — so the last signature and the ledger entry commit
+ * together. If posting fails (a closed period, a since-archived account), the
+ * approval rolls back with it and the document stays pending rather than
+ * ending up approved-but-unposted.
+ */
+export async function postApprovedDocument(
+  tx: Tx,
+  ctx: TenantContext,
+  documentId: string,
+): Promise<{ journalEntryId: string } | null> {
+  const [document] = await tx
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.companyId, ctx.companyId)))
+    .for('update')
+    .limit(1);
+
+  if (!document) throw new NotFoundError('Document');
+  // Already posted, or not a posting document: nothing further to do. Not an
+  // error — the approval itself was still valid and must not be rolled back.
+  if (document.journalEntryId) return null;
+  if (isNonPosting(document.documentType)) return null;
+  if (document.status === 'cancelled' || document.status === 'void') return null;
+
+  return postDocumentToLedger(tx, ctx, document);
 }
 
 /**
@@ -453,18 +689,32 @@ function determineStatus(
   balanceDue: Money,
 ): DocumentRow['status'] {
   // Terminal states are never recomputed from payment activity.
-  if (document.status === 'cancelled' || document.status === 'void') return document.status;
-  if (document.status === 'draft') return 'draft';
+  if (
+    document.status === 'cancelled' ||
+    document.status === 'void' ||
+    // A written-off balance was cleared by a bad-debt entry, not by payment.
+    // Recomputing it would relabel the write-off as `paid` and hide the loss.
+    document.status === 'written_off'
+  ) {
+    return document.status;
+  }
+  if (document.status === 'draft' || document.status === 'pending_approval') {
+    return document.status;
+  }
 
-  if (isZero(balanceDue)) return 'paid';
+  if (isZero(balanceDue) && !isZero(amountPaid)) return 'paid';
   if (!isZero(amountPaid)) return 'partially_paid';
 
   // Overdue is derived from the due date rather than stored as an event, so it
-  // becomes true on its own without a nightly job.
+  // becomes true on its own without a nightly job. Checked after the payment
+  // states so a part-paid overdue invoice keeps its payment status; `isOverdue`
+  // below is the orthogonal flag reports should filter on.
   if (document.dueDate && document.dueDate < new Date().toISOString().slice(0, 10)) {
     return 'overdue';
   }
-  return document.status === 'approved' ? 'approved' : document.status;
+  // `sent` is preserved: it was a real event, and reverting it to `approved` on
+  // the next balance refresh lost the fact that the customer had been invoiced.
+  return document.status;
 }
 
 export async function listDocuments(
@@ -528,6 +778,11 @@ export async function listDocuments(
 }
 
 export async function getDocument(ctx: TenantContext, documentId: string) {
+  // Ids arrive straight from the URL, so a stray path segment ("new", a typo)
+  // would otherwise reach Postgres and fail as a 500 on a uuid cast. A
+  // malformed id simply cannot match a document, so treat it as not-found.
+  if (!isUuid(documentId)) throw new NotFoundError('Document');
+
   const [document] = await db
     .select()
     .from(documents)
@@ -600,6 +855,137 @@ export async function voidDocument(
       newValues: { status: 'void' },
       reason,
     });
+  });
+}
+
+/**
+ * Writes off an uncollectible receivable (or payable).
+ *
+ *   Dr Bad Debt Expense        outstanding balance
+ *     Cr Accounts Receivable        outstanding balance
+ *
+ * The write-off is linked to the specific document via `sourceType`/`sourceId`
+ * and carries the customer on the line, so the subledger and the control
+ * account stay in step and the write-off can be traced back to what it wrote
+ * off — an unlinked journal entry would clear the control account while
+ * leaving the invoice showing as outstanding for ever.
+ *
+ * A write-off is recorded as an allocation-free settlement: `balanceDue` falls
+ * to nil through the same `refreshDocumentBalance` path everything else uses.
+ */
+export async function writeOffDocument(
+  ctx: TenantContext,
+  documentId: string,
+  params: { reason: string; writeOffDate?: string },
+): Promise<{ journalEntryId: string; amount: Money }> {
+  if (!params.reason?.trim()) {
+    throw new ValidationError('A reason is required to write off a balance');
+  }
+
+  return db.transaction(async (tx) => {
+    const [document] = await tx
+      .select()
+      .from(documents)
+      .where(and(eq(documents.id, documentId), eq(documents.companyId, ctx.companyId)))
+      .for('update')
+      .limit(1);
+
+    if (!document) throw new NotFoundError('Document');
+
+    const perms = permissionsFor(document.direction as DocumentDirection);
+    requirePermission(ctx, perms.approve);
+    // Writing off a debt is a credit decision, not data entry: the person who
+    // raised the invoice must not be the one deciding it is uncollectible.
+    requireDifferentApprover(
+      ctx,
+      document.createdById,
+      PERMISSIONS.selfApproval.documents,
+      'document',
+    );
+
+    if (!document.journalEntryId) {
+      throw new AccountingError(
+        `${document.documentNumber} has not been posted, so there is no receivable to write off. ` +
+          'Delete or void the draft instead.',
+      );
+    }
+    if (document.status === 'void' || document.status === 'cancelled') {
+      throw new ConflictError(`${document.documentNumber} is ${document.status}.`);
+    }
+    if (isZero(document.balanceDue)) {
+      throw new AccountingError(
+        `${document.documentNumber} has no outstanding balance to write off.`,
+      );
+    }
+
+    const isSale = document.direction === 'outbound';
+    const writeOffDate = params.writeOffDate ?? new Date().toISOString().slice(0, 10);
+    const amount = money(document.balanceDue);
+
+    const badDebt = await resolveAccountByRole(tx, ctx.companyId, 'bad_debt_expense');
+    const control = await resolveAccountByRole(
+      tx,
+      ctx.companyId,
+      isSale ? 'accounts_receivable' : 'accounts_payable',
+    );
+
+    const entry = await createJournalEntry(
+      ctx,
+      {
+        entryDate: writeOffDate,
+        description: `Write-off ${document.documentNumber}: ${params.reason}`,
+        reference: document.documentNumber,
+        currencyCode: document.currencyCode,
+        exchangeRate: document.exchangeRate,
+        branchId: document.branchId,
+        sourceType: 'write_off',
+        sourceId: document.id,
+        lines: [
+          {
+            accountId: badDebt.id,
+            // A written-off payable is a gain, not an expense, so the sides
+            // flip for an inbound document.
+            [isSale ? 'debit' : 'credit']: amount,
+            description: `Bad debt: ${document.documentNumber}`,
+            customerId: isSale ? document.contactId : null,
+            vendorId: isSale ? null : document.contactId,
+            branchId: document.branchId,
+          },
+          {
+            accountId: control.id,
+            [isSale ? 'credit' : 'debit']: amount,
+            description: `Write off ${document.documentNumber}`,
+            customerId: isSale ? document.contactId : null,
+            vendorId: isSale ? null : document.contactId,
+            branchId: document.branchId,
+          },
+        ] as never,
+        post: true,
+      },
+      { tx, allowControlAccounts: true },
+    );
+
+    await tx
+      .update(documents)
+      .set({
+        // The balance is gone from the ledger, so the document must agree.
+        amountPaid: document.total,
+        balanceDue: '0',
+        status: 'written_off',
+        updatedAt: sql`now()`,
+      })
+      .where(eq(documents.id, documentId));
+
+    await recordAudit(tx, ctx, {
+      action: 'document.written_off',
+      entityType: 'document',
+      entityId: documentId,
+      previousValues: { status: document.status, balanceDue: document.balanceDue },
+      newValues: { status: 'written_off', journalEntryId: entry.id, amount },
+      reason: params.reason,
+    });
+
+    return { journalEntryId: entry.id, amount };
   });
 }
 

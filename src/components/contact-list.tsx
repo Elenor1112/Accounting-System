@@ -6,15 +6,21 @@ import { DataTable, Pagination, type Column } from './data-table';
 import { FilterBar } from './filter-bar';
 import { Badge } from './ui';
 
-interface ContactRow {
+export interface ContactListRow {
   id: string;
   code: string;
   displayName: string;
+  contactPerson: string | null;
   email: string | null;
   phone: string | null;
+  category: string | null;
   currencyCode: string | null;
   paymentTermsDays: number;
+  creditLimit: string | null;
   isActive: boolean;
+  /** Outstanding as at today, reconstructed from posted allocations. */
+  outstanding: string;
+  overdue: string;
 }
 
 export function ContactList({
@@ -24,18 +30,25 @@ export function ContactList({
   basePath,
   searchParams,
   kind,
+  baseCurrencyCode,
+  currencyPrecision,
 }: {
-  rows: ContactRow[];
+  rows: ContactListRow[];
   page: number;
   pageSize: number;
   basePath: string;
   searchParams: Record<string, string | undefined>;
   kind: 'customer' | 'vendor';
+  baseCurrencyCode: string;
+  currencyPrecision: number;
 }) {
   const hasMore = rows.length > pageSize;
   const visible = hasMore ? rows.slice(0, pageSize) : rows;
 
-  const columns: Column<ContactRow>[] = [
+  const asMoney = (value: string) =>
+    fmt.money(value, { currency: baseCurrencyCode, precision: currencyPrecision });
+
+  const columns: Column<ContactListRow>[] = [
     {
       key: 'code',
       header: 'Code',
@@ -46,23 +59,30 @@ export function ContactList({
       key: 'name',
       header: 'Name',
       render: (row) => (
-        <Link
-          href={`${basePath}/${row.id}`}
-          className="font-medium text-accent hover:underline"
-        >
-          {row.displayName}
-        </Link>
+        <div>
+          <Link
+            href={`${basePath}/${row.id}`}
+            className="font-medium text-accent hover:underline"
+          >
+            {row.displayName}
+          </Link>
+          {row.contactPerson ? (
+            <span className="block text-xs text-muted-foreground">
+              {row.contactPerson}
+            </span>
+          ) : null}
+        </div>
       ),
     },
     {
-      key: 'email',
-      header: 'Email',
-      render: (row) => <span className="text-muted-foreground">{row.email ?? '—'}</span>,
-    },
-    {
-      key: 'phone',
-      header: 'Phone',
-      render: (row) => <span className="text-muted-foreground">{row.phone ?? '—'}</span>,
+      key: 'contact',
+      header: 'Contact',
+      render: (row) => (
+        <div className="text-muted-foreground">
+          <span className="block">{row.email ?? '—'}</span>
+          {row.phone ? <span className="block text-xs">{row.phone}</span> : null}
+        </div>
+      ),
     },
     {
       key: 'terms',
@@ -72,13 +92,44 @@ export function ContactList({
       ),
     },
     {
+      key: 'outstanding',
+      header: kind === 'customer' ? 'Outstanding' : 'Owed',
+      align: 'right',
+      render: (row) => (
+        <div>
+          <span
+            className={
+              row.outstanding === '0' ? 'text-muted-foreground' : 'font-medium'
+            }
+          >
+            {asMoney(row.outstanding)}
+          </span>
+          {row.overdue !== '0' ? (
+            <span className="block text-xs text-negative">
+              {asMoney(row.overdue)} overdue
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: 'creditLimit',
+      header: 'Credit limit',
+      align: 'right',
+      render: (row) => (
+        <span className="text-muted-foreground">
+          {row.creditLimit ? asMoney(row.creditLimit) : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'status',
       header: 'Status',
       render: (row) =>
         row.isActive ? (
           <Badge tone="positive">Active</Badge>
         ) : (
-          <Badge tone="neutral">Inactive</Badge>
+          <Badge tone="neutral">Archived</Badge>
         ),
     },
   ];
@@ -88,7 +139,26 @@ export function ContactList({
       <FilterBar
         basePath={basePath}
         searchParams={searchParams}
-        searchPlaceholder={`Search ${kind}s by name, code or email…`}
+        searchPlaceholder={`Search ${kind}s by name, code, contact, email or phone…`}
+        selects={[
+          {
+            name: 'status',
+            label: 'Status',
+            options: [
+              { value: '', label: 'Active only' },
+              { value: 'all', label: 'Active and archived' },
+            ],
+          },
+          {
+            name: 'sort',
+            label: 'Sort by',
+            options: [
+              { value: '', label: 'Name' },
+              { value: 'code', label: 'Code' },
+              { value: 'balance', label: 'Outstanding' },
+            ],
+          },
+        ]}
       />
 
       <DataTable
@@ -99,7 +169,9 @@ export function ContactList({
           title: `No ${kind}s yet`,
           description: searchParams.q
             ? 'No results match your search.'
-            : `${kind === 'customer' ? 'Customers' : 'Vendors'} are created automatically when you raise their first document, or you can add them here.`,
+            : `Add your first ${kind} to start raising ${
+                kind === 'customer' ? 'invoices' : 'bills'
+              }.`,
         }}
       />
 

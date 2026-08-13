@@ -2,15 +2,25 @@ import 'server-only';
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { db } from '@/db';
-import { accounts, contacts, expenseCategories, expenses, taxes, users } from '@/db/schema';
+import { db, type Tx } from '@/db';
+import {
+  accounts,
+  approvals,
+  contacts,
+  expenseCategories,
+  expenses,
+  taxes,
+  users,
+} from '@/db/schema';
 import {
   requireBranchAccess,
+  requireDifferentApprover,
   requirePermission,
   type TenantContext,
 } from '@/server/auth/context';
 import { PERMISSIONS } from '@/server/auth/permissions';
 import { AccountingError, ConflictError, NotFoundError, ValidationError } from '@/server/errors';
+import { calculateLine } from '@/lib/line-calculator';
 import { add, gt, money, subtract, type Money } from '@/lib/money';
 
 import { recordAudit } from './audit-service';
@@ -18,6 +28,7 @@ import { resolveAccountByRole } from './account-service';
 import { resolveExchangeRate } from './currency-service';
 import { createJournalEntry, reverseJournalEntry } from './journal-service';
 import { allocateDocumentNumber } from './numbering-service';
+import { getApplicableSteps, startApprovalChain } from './workflow-service';
 
 export type ExpenseRow = typeof expenses.$inferSelect;
 
@@ -94,9 +105,19 @@ export async function createExpense(
 
       if (!tax) throw new NotFoundError('Tax');
 
-      taxAmount = tax.isInclusive
-        ? subtract(amount, divideByRate(amount, tax.ratePercent))
-        : money(String((Number(amount) * Number(tax.ratePercent)) / 100));
+      // Routed through the same exact calculator invoices and bills use, rather
+      // than a second float implementation of the same rules. Inclusive tax is
+      // derived by subtraction there, so base + tax equals the amount entered
+      // exactly — which is what makes the three ledger legs re-add to the whole.
+      taxAmount = calculateLine(
+        {
+          quantity: '1',
+          unitPrice: amount,
+          taxRatePercent: tax.ratePercent,
+          taxInclusive: tax.isInclusive,
+        },
+        ctx.currencyPrecision,
+      ).taxAmount;
     }
 
     const expenseNumber = await allocateDocumentNumber(tx, {
@@ -143,12 +164,6 @@ export async function createExpense(
   });
 }
 
-/** Extracts the tax-exclusive base from an inclusive amount. */
-function divideByRate(amountValue: Money, ratePercent: string): Money {
-  const base = (Number(amountValue) * 100) / (100 + Number(ratePercent));
-  return money(base.toFixed(6));
-}
-
 export async function submitExpense(ctx: TenantContext, expenseId: string): Promise<void> {
   requirePermission(ctx, PERMISSIONS.expenses.create);
 
@@ -192,7 +207,7 @@ export async function submitExpense(ctx: TenantContext, expenseId: string): Prom
 export async function approveExpense(
   ctx: TenantContext,
   expenseId: string,
-): Promise<{ journalEntryId: string }> {
+): Promise<{ journalEntryId: string } | { pendingApproval: true; stepsRequired: number }> {
   requirePermission(ctx, PERMISSIONS.expenses.approve);
 
   return db.transaction(async (tx) => {
@@ -211,6 +226,93 @@ export async function approveExpense(
       throw new ConflictError('A rejected expense cannot be approved; resubmit it first');
     }
 
+    // Same approval gate as documents: a configured threshold on expenses was
+    // equally decorative before this.
+    const existing = await tx
+      .select({ status: approvals.status })
+      .from(approvals)
+      .where(
+        and(
+          eq(approvals.companyId, ctx.companyId),
+          eq(approvals.entityType, 'expense'),
+          eq(approvals.entityId, expenseId),
+        ),
+      );
+
+    if (existing.length > 0) {
+      if (existing.some((a) => a.status === 'rejected')) {
+        throw new ConflictError(
+          'This expense was rejected in approval. Resubmit it rather than approving it directly.',
+        );
+      }
+      if (existing.some((a) => a.status === 'pending')) {
+        return { pendingApproval: true as const, stepsRequired: existing.length };
+      }
+    } else {
+      const steps = await getApplicableSteps(tx, {
+        companyId: ctx.companyId,
+        documentType: 'expense',
+        amount: expense.amount,
+      });
+
+      if (steps.length > 0) {
+        await startApprovalChain(tx, ctx, {
+          entityType: 'expense',
+          entityId: expenseId,
+          documentType: 'expense',
+          amount: expense.amount,
+        });
+
+        await tx
+          .update(expenses)
+          .set({ status: 'pending_approval', updatedAt: sql`now()` })
+          .where(eq(expenses.id, expenseId));
+
+        await recordAudit(tx, ctx, {
+          action: 'expense.submitted_for_approval',
+          entityType: 'expense',
+          entityId: expenseId,
+          previousValues: { status: expense.status },
+          newValues: { status: 'pending_approval', stepsRequired: steps.length },
+        });
+
+        return { pendingApproval: true as const, stepsRequired: steps.length };
+      }
+    }
+
+    // Both the claimant and the person who keyed it are blocked from approving:
+    // an employee approving their own reimbursement is the textbook expense
+    // fraud, and it is the claimant (`userId`) who is reimbursed regardless of
+    // who typed the record in.
+    requireDifferentApprover(
+      ctx,
+      expense.userId,
+      PERMISSIONS.selfApproval.expenses,
+      'expense claim',
+    );
+    requireDifferentApprover(
+      ctx,
+      expense.createdById,
+      PERMISSIONS.selfApproval.expenses,
+      'expense',
+    );
+
+    return postExpenseToLedger(tx, ctx, expense);
+  });
+}
+
+/**
+ * Posts an authorised expense to the ledger. Authorisation is the callers'
+ * job; by the time this runs the claim is cleared.
+ */
+async function postExpenseToLedger(
+  tx: Tx,
+  ctx: TenantContext,
+  expense: ExpenseRow,
+): Promise<{ journalEntryId: string }> {
+  const expenseId = expense.id;
+
+  {
     const [category] = await tx
       .select()
       .from(expenseCategories)
@@ -298,7 +400,29 @@ export async function approveExpense(
     });
 
     return { journalEntryId: entry.id };
-  });
+  }
+}
+
+/**
+ * Posts an expense whose approval chain has just completed, inside the
+ * deciding transaction — the counterpart of `postApprovedDocument`.
+ */
+export async function postApprovedExpense(
+  tx: Tx,
+  ctx: TenantContext,
+  expenseId: string,
+): Promise<{ journalEntryId: string } | null> {
+  const [expense] = await tx
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.id, expenseId), eq(expenses.companyId, ctx.companyId)))
+    .for('update')
+    .limit(1);
+
+  if (!expense) throw new NotFoundError('Expense');
+  if (expense.journalEntryId) return null;
+
+  return postExpenseToLedger(tx, ctx, expense);
 }
 
 export async function rejectExpense(

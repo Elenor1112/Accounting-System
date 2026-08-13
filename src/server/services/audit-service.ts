@@ -1,8 +1,11 @@
 import 'server-only';
 
-import type { Executor } from '@/db';
-import { auditLogs } from '@/db/schema';
-import type { TenantContext } from '@/server/auth/context';
+import { and, desc, eq, sql } from 'drizzle-orm';
+
+import { db, type Executor } from '@/db';
+import { auditLogs, users } from '@/db/schema';
+import { requirePermission, type TenantContext } from '@/server/auth/context';
+import { PERMISSIONS } from '@/server/auth/permissions';
 
 /**
  * Writes an audit record (spec §23).
@@ -36,6 +39,99 @@ export async function recordAudit(
     ipAddress: ctx.ipAddress ?? null,
     userAgent: ctx.userAgent ?? null,
   });
+}
+
+/**
+ * Queries the audit log with filters (spec §23, audit finding: no filtering by
+ * actor, date or entity).
+ *
+ * An audit trail nobody can search is not usable as evidence: the specific
+ * question an auditor asks is "show me everything this user did in June", and
+ * before this there was no way to answer it without reading every page.
+ */
+export async function listAuditLogs(
+  ctx: TenantContext,
+  filters: {
+    actorId?: string;
+    entityType?: string;
+    entityId?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+) {
+  requirePermission(ctx, PERMISSIONS.audit.view);
+
+  const conditions = [eq(auditLogs.companyId, ctx.companyId)];
+
+  if (filters.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
+  if (filters.entityType) conditions.push(eq(auditLogs.entityType, filters.entityType));
+  if (filters.entityId) conditions.push(eq(auditLogs.entityId, filters.entityId));
+  // Prefix match, so "document" finds document.created, document.posted, etc.
+  if (filters.action) {
+    conditions.push(sql`${auditLogs.action} like ${`${filters.action}%`}`);
+  }
+  if (filters.from) conditions.push(sql`${auditLogs.createdAt} >= ${filters.from}::date`);
+  // Inclusive of the whole end day, not just midnight on it.
+  if (filters.to) {
+    conditions.push(sql`${auditLogs.createdAt} < (${filters.to}::date + 1)`);
+  }
+  if (filters.search) {
+    const term = `%${filters.search.toLowerCase()}%`;
+    conditions.push(
+      sql`(lower(${auditLogs.action}) like ${term}
+        or lower(${auditLogs.entityType}) like ${term}
+        or lower(coalesce(${auditLogs.reason}, '')) like ${term})`,
+    );
+  }
+
+  return db
+    .select({
+      id: auditLogs.id,
+      action: auditLogs.action,
+      entityType: auditLogs.entityType,
+      entityId: auditLogs.entityId,
+      previousValues: auditLogs.previousValues,
+      newValues: auditLogs.newValues,
+      reason: auditLogs.reason,
+      ipAddress: auditLogs.ipAddress,
+      userAgent: auditLogs.userAgent,
+      createdAt: auditLogs.createdAt,
+      actorId: auditLogs.actorId,
+      actorName: users.name,
+      actorEmail: users.email,
+    })
+    .from(auditLogs)
+    .leftJoin(users, eq(users.id, auditLogs.actorId))
+    .where(and(...conditions))
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(filters.limit ?? 50)
+    .offset(filters.offset ?? 0);
+}
+
+/** Distinct actors and entity types present in the log, for filter dropdowns. */
+export async function getAuditFilterOptions(ctx: TenantContext) {
+  requirePermission(ctx, PERMISSIONS.audit.view);
+
+  const [actors, entityTypes] = await Promise.all([
+    db
+      .selectDistinct({ id: users.id, name: users.name })
+      .from(auditLogs)
+      .innerJoin(users, eq(users.id, auditLogs.actorId))
+      .where(eq(auditLogs.companyId, ctx.companyId)),
+    db
+      .selectDistinct({ entityType: auditLogs.entityType })
+      .from(auditLogs)
+      .where(eq(auditLogs.companyId, ctx.companyId)),
+  ]);
+
+  return {
+    actors: actors.sort((a, b) => a.name.localeCompare(b.name)),
+    entityTypes: entityTypes.map((r) => r.entityType).sort(),
+  };
 }
 
 /**

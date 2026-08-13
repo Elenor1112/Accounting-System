@@ -1,7 +1,11 @@
 import { Badge, PageHeader, TableWrap } from '@/components/ui';
+import { YearEndClose } from '@/components/year-end-close';
 import * as fmt from '@/lib/format';
+import { can } from '@/server/auth/context';
+import { PERMISSIONS } from '@/server/auth/permissions';
 import { requireTenantContext } from '@/server/auth/session';
 import { listPeriods } from '@/server/services/period-service';
+import { getLastClosedDate } from '@/server/services/year-end-service';
 
 export const metadata = { title: 'Fiscal Periods — LedgerBase' };
 export const dynamic = 'force-dynamic';
@@ -14,7 +18,11 @@ const STATUS_TONES = {
 
 export default async function PeriodsPage() {
   const ctx = await requireTenantContext();
-  const periods = await listPeriods(ctx);
+  const [periods, lastClosedDate] = await Promise.all([
+    listPeriods(ctx),
+    getLastClosedDate(ctx),
+  ]);
+  const canManage = can(ctx, PERMISSIONS.periods.manage);
 
   const byYear = new Map<number, typeof periods>();
   for (const period of periods) {
@@ -75,6 +83,23 @@ export default async function PeriodsPage() {
                     </tbody>
                   </table>
                 </TableWrap>
+
+                {canManage ? (
+                  <div className="mt-3">
+                    <YearEndClose
+                      fiscalYear={year}
+                      // A year is closed once the company's last close reaches
+                      // its end; the service is the authority, this only
+                      // decides which control to show.
+                      isClosed={Boolean(
+                        lastClosedDate &&
+                          lastClosedDate >= (rows[rows.length - 1]?.endDate ?? ''),
+                      )}
+                      currency={ctx.baseCurrencyCode}
+                      precision={ctx.currencyPrecision}
+                    />
+                  </div>
+                ) : null}
               </div>
             ))}
         </div>

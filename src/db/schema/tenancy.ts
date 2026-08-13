@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -77,6 +78,33 @@ export const companies = pgTable(
     dateFormat: text('date_format').notNull().default('yyyy-MM-dd'),
     /** Presentation scale for money. Storage always keeps 6 decimals. */
     currencyPrecision: integer('currency_precision').notNull().default(2),
+
+    /**
+     * Posting date controls (audit finding: backdating was unrestricted
+     * wherever no fiscal period existed).
+     *
+     * `requireOpenPeriod` makes posting fail closed: a date with no defined
+     * period is rejected rather than posted with a null period, which is what
+     * let an entry land in 1998 or 2049 and escape both the lock and every
+     * period-based report. Defaults true — correct for an established client —
+     * but a company still setting up its calendar can turn it off deliberately.
+     *
+     * `maxFutureDays` caps forward dating. Some post-dating is legitimate (a
+     * cheque dated next week), so this is a bound rather than a ban.
+     */
+    requireOpenPeriod: boolean('require_open_period').notNull().default(true),
+    maxFutureDays: integer('max_future_days').notNull().default(30),
+
+    /**
+     * The last fiscal year-end that has been closed to retained earnings.
+     *
+     * The balance sheet accumulates profit only from the day *after* this date.
+     * Without it the sheet computes retained earnings from inception and would
+     * double-count any closing entry — once in the retained earnings account
+     * balance, and again in its own recomputation. Null means no year has been
+     * closed, which is the correct starting state.
+     */
+    lastClosedDate: date('last_closed_date'),
 
     /**
      * Open-ended per-company settings that do not warrant columns: default

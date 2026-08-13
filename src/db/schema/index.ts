@@ -6,3 +6,5 @@ export * from './contacts';
 export * from './config';
 export * from './documents';
 export * from './audit';
+export * from './inventory';
+export * from './fixed-assets';

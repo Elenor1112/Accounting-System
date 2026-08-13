@@ -110,6 +110,38 @@ export function can(ctx: TenantContext, permission: Permission): boolean {
 }
 
 /**
+ * Maker-checker: refuses an approval/post decision on a record the same user
+ * created.
+ *
+ * Without this, one credential can create a vendor, bill it, approve the bill,
+ * pay it to an account they control and reconcile the payment — every step
+ * permitted, the trial balance balanced at each one, and nothing but a reader
+ * of the audit log to notice. Holding the matching `self_approve` permission
+ * lifts the block, so a one-person business is still workable but has had to
+ * ask for it.
+ *
+ * `createdById` is nullable throughout the schema (users are `set null` on
+ * delete); a record with no known creator cannot be self-approved by anyone,
+ * so it passes.
+ */
+export function requireDifferentApprover(
+  ctx: TenantContext,
+  createdById: string | null | undefined,
+  override: Permission,
+  what = 'document',
+): void {
+  if (!createdById || createdById !== ctx.userId) return;
+  if (hasPermission(ctx.permissions, override)) return;
+
+  throw new ForbiddenError(
+    `You raised this ${what}, so you cannot also approve it. ` +
+      'Segregation of duties requires a second person to authorise it. ' +
+      `(An administrator may grant "${override}" if your organization ` +
+      'accepts combined duties.)',
+  );
+}
+
+/**
  * Throws unless the caller may act on `branchId`.
  *
  * A membership with an empty `branchIds` sees the whole company; a restricted

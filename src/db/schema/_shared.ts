@@ -126,4 +126,11 @@ export const documentStatusEnum = pgEnum('document_status', [
   'overdue',
   'cancelled',
   'void',
+  /**
+   * Judged uncollectible and cleared from the control account by a linked
+   * bad-debt entry. Distinct from `paid` (the customer settled) and from
+   * `void` (the document should never have existed) — the receivable was real
+   * and the loss is recognised.
+   */
+  'written_off',
 ]);

@@ -7,6 +7,7 @@ import { accounts, journalLines } from '@/db/schema';
 import { requirePermission, type TenantContext } from '@/server/auth/context';
 import { PERMISSIONS } from '@/server/auth/permissions';
 import { AccountingError, ConflictError, NotFoundError, ValidationError } from '@/server/errors';
+import { subtract } from '@/lib/money';
 
 import { recordAudit, diffValues } from './audit-service';
 import { getTemplate, type AccountRole, type TemplateAccount } from './coa-templates';
@@ -30,10 +31,13 @@ export function normalBalance(type: string): 'debit' | 'credit' {
  * with 1,000 credit reads as +1,000, not −1,000.
  */
 export function signedBalance(type: string, debit: string, credit: string): string {
-  const d = Number(debit);
-  const c = Number(credit);
-  const raw = normalBalance(type) === 'debit' ? d - c : c - d;
-  return String(raw);
+  // Exact subtraction: these are numeric(20,6) strings straight from the
+  // ledger, and routing a balance through a JS number would both lose
+  // precision on large figures and reintroduce binary-fraction drift into
+  // numbers every report displays.
+  return normalBalance(type) === 'debit'
+    ? subtract(debit, credit)
+    : subtract(credit, debit);
 }
 
 /** Installs a template's accounts for a company, resolving parents and paths. */

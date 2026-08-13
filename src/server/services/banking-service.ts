@@ -448,8 +448,18 @@ export async function unmatchBankTransaction(
  */
 export async function completeReconciliation(
   ctx: TenantContext,
-  params: { bankAccountId: string; statementDate: string; statementBalance: Money },
-): Promise<{ id: string; difference: Money }> {
+  params: {
+    bankAccountId: string;
+    statementDate: string;
+    statementBalance: Money;
+    /**
+     * Required to complete a reconciliation with a non-zero difference.
+     * Without it the reconciliation is recorded as a `discrepancy` instead.
+     */
+    explanation?: string | null;
+    adjustmentEntryId?: string | null;
+  },
+): Promise<{ id: string; difference: Money; status: 'completed' | 'discrepancy' }> {
   requirePermission(ctx, PERMISSIONS.banking.reconcile);
 
   const ledger = await getBankAccountBalance(
@@ -458,6 +468,17 @@ export async function completeReconciliation(
     params.statementDate,
   );
   const difference = subtract(params.statementBalance, ledger.balance);
+
+  /**
+   * A reconciliation with an unexplained difference is, by definition, not
+   * reconciled. Storing the difference and marking it `completed` anyway — the
+   * previous behaviour — put a green state over an unexplained cash gap that
+   * nobody was then required to clear.
+   */
+  const explanation = params.explanation?.trim() || null;
+  const isExplained =
+    isZero(difference) || Boolean(explanation) || Boolean(params.adjustmentEntryId);
+  const status: 'completed' | 'discrepancy' = isExplained ? 'completed' : 'discrepancy';
 
   return db.transaction(async (tx) => {
     const [created] = await tx
@@ -469,26 +490,31 @@ export async function completeReconciliation(
         statementBalance: money(params.statementBalance),
         ledgerBalance: ledger.balance,
         difference,
-        status: 'completed',
-        completedAt: sql`now()`,
-        completedById: ctx.userId,
+        status,
+        explanation,
+        adjustmentEntryId: params.adjustmentEntryId ?? null,
+        // Only a genuinely completed reconciliation carries a completion.
+        completedAt: status === 'completed' ? sql`now()` : null,
+        completedById: status === 'completed' ? ctx.userId : null,
       })
       .returning();
 
     if (!created) throw new ConflictError('Failed to record reconciliation');
 
     await recordAudit(tx, ctx, {
-      action: 'bank.reconciled',
+      action: status === 'completed' ? 'bank.reconciled' : 'bank.reconciliation_discrepancy',
       entityType: 'reconciliation',
       entityId: created.id,
       newValues: {
         statementBalance: params.statementBalance,
         ledgerBalance: ledger.balance,
         difference,
+        status,
       },
+      reason: explanation,
     });
 
-    return { id: created.id, difference };
+    return { id: created.id, difference, status };
   });
 }
 

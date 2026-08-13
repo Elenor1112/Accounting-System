@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, lte } from 'drizzle-orm';
 
 import { closeDb, db } from '@/db';
 import { fiscalPeriods, journalEntries, journalLines } from '@/db/schema';
@@ -232,19 +232,25 @@ describe('journal engine', () => {
   });
 
   test('posting into a closed period is refused', async () => {
-    await db.insert(fiscalPeriods).values({
-      companyId: co.companyId,
-      fiscalYear: 2025,
-      periodNumber: 1,
-      name: 'January 2025',
-      startDate: '2025-01-01',
-      endDate: '2025-01-31',
-      status: 'closed',
-    });
+    // The harness generates an open calendar, as a real company has; this test
+    // closes one of those months rather than inserting a competing period.
+    const lastYear = new Date().getUTCFullYear() - 1;
+    const closedDate = `${lastYear}-01-15`;
+
+    await db
+      .update(fiscalPeriods)
+      .set({ status: 'closed' })
+      .where(
+        and(
+          eq(fiscalPeriods.companyId, co.companyId),
+          lte(fiscalPeriods.startDate, closedDate),
+          gte(fiscalPeriods.endDate, closedDate),
+        ),
+      );
 
     await assert.rejects(
       createJournalEntry(co.ctx, {
-        entryDate: '2025-01-15',
+        entryDate: closedDate,
         lines: [
           { accountId: co.accountId('6200'), debit: '100' },
           { accountId: co.accountId('1120'), credit: '100' },
@@ -256,7 +262,7 @@ describe('journal engine', () => {
 
     // A draft in the same period is fine — only posting is blocked.
     const draft = await createJournalEntry(co.ctx, {
-      entryDate: '2025-01-15',
+      entryDate: closedDate,
       lines: [
         { accountId: co.accountId('6200'), debit: '100' },
         { accountId: co.accountId('1120'), credit: '100' },
@@ -266,21 +272,24 @@ describe('journal engine', () => {
   });
 
   test('posting into an open period records the period link', async () => {
+    // Use a month from the calendar the harness generated, and assert the
+    // entry links to that very period row.
+    const entryDate = `${new Date().getUTCFullYear()}-06-15`;
+
     const [period] = await db
-      .insert(fiscalPeriods)
-      .values({
-        companyId: co.companyId,
-        fiscalYear: 2026,
-        periodNumber: 6,
-        name: 'June 2026',
-        startDate: '2026-06-01',
-        endDate: '2026-06-30',
-        status: 'open',
-      })
-      .returning();
+      .select()
+      .from(fiscalPeriods)
+      .where(
+        and(
+          eq(fiscalPeriods.companyId, co.companyId),
+          lte(fiscalPeriods.startDate, entryDate),
+          gte(fiscalPeriods.endDate, entryDate),
+        ),
+      )
+      .limit(1);
 
     const entry = await createJournalEntry(co.ctx, {
-      entryDate: '2026-06-15',
+      entryDate,
       lines: [
         { accountId: co.accountId('6200'), debit: '400' },
         { accountId: co.accountId('1120'), credit: '400' },
