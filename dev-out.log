@@ -10,3 +10,9 @@
  ✓ Starting...
  ✓ Ready in 2.5s
  ○ Compiling /_not-found ...
+ ✓ Compiled /login in 23.7s (908 modules)
+ GET /sw.js 404 in 24190ms
+ GET /login 200 in 4832ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1687ms (1051 modules)
+ GET /dashboard 200 in 5302ms
