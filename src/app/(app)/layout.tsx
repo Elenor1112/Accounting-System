@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const companies = await listAccessibleCompanies(ctx.userId);
 
   return (
-    <div className="flex min-h-screen bg-surface-muted">
+    <div className="flex min-h-screen bg-background">
       <Sidebar permissions={ctx.permissions} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
@@ -31,8 +31,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           companies={companies}
           roleKey={ctx.roleKey}
         />
-        <main className="flex-1 px-6 py-6">
-          <div className="mx-auto max-w-[1400px] animate-fade-in">{children}</div>
+        <main className="flex-1 px-8 py-8">
+          <div className="mx-auto max-w-[1440px] animate-fade-in">{children}</div>
         </main>
       </div>
     </div>

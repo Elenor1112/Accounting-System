@@ -39,7 +39,7 @@ export function TopBar({
     .join('');
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-border bg-surface px-6">
       <div className="flex items-center gap-3">
         {companies.length > 1 ? (
           <select
@@ -76,7 +76,7 @@ export function TopBar({
           aria-haspopup="menu"
           aria-expanded={menuOpen}
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-subtle text-[11px] font-semibold text-accent">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-muted text-[11px] font-semibold text-primary">
             {initials}
           </span>
           <span className="hidden text-sm text-foreground sm:block">{userName}</span>

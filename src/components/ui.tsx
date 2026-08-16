@@ -13,7 +13,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md';
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-foreground hover:opacity-90',
+  primary: 'bg-primary text-primary-foreground hover:opacity-90',
   secondary: 'border border-border bg-surface text-foreground hover:bg-surface-muted',
   ghost: 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
   danger: 'bg-negative text-white hover:opacity-90',
@@ -37,7 +37,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors',
+        'inline-flex items-center justify-center gap-1.5 rounded-md text-xs font-semibold uppercase tracking-caps transition-colors',
         'disabled:pointer-events-none disabled:opacity-50',
         BUTTON_VARIANTS[variant],
         BUTTON_SIZES[size],
@@ -122,7 +122,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-caps',
         BADGE_TONES[tone],
         className,
       )}
@@ -183,11 +183,11 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="text-display text-primary">{title}</h1>
         {description ? (
-          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
@@ -197,7 +197,7 @@ export function PageHeader({
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <h2 className="mb-2 text-xs font-semibold uppercase tracking-caps text-muted-foreground">
       {children}
     </h2>
   );
@@ -252,19 +252,29 @@ export function Stat({
   tone?: 'neutral' | 'positive' | 'negative';
 }) {
   return (
-    <div className="card p-4">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <div className="card relative flex flex-col gap-1.5 overflow-hidden p-5">
+      <div
+        className={cn(
+          'absolute left-0 top-0 h-full w-1',
+          tone === 'positive' && 'bg-positive',
+          tone === 'negative' && 'bg-negative',
+          tone === 'neutral' && 'bg-border-strong',
+        )}
+      />
+      <p className="text-[11px] font-semibold uppercase tracking-caps text-muted-foreground">
+        {label}
+      </p>
       <p
         className={cn(
-          'mt-1.5 text-2xl font-semibold tabular tracking-tight',
+          'text-2xl font-bold tabular tracking-tight',
           tone === 'positive' && 'text-positive',
           tone === 'negative' && 'text-negative',
-          tone === 'neutral' && 'text-foreground',
+          tone === 'neutral' && 'text-primary',
         )}
       >
         {value}
       </p>
-      {hint ? <p className="mt-1 text-xs text-subtle-foreground">{hint}</p> : null}
+      {hint ? <p className="text-xs text-subtle-foreground">{hint}</p> : null}
     </div>
   );
 }

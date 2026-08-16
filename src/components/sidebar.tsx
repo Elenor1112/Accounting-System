@@ -90,22 +90,28 @@ export function Sidebar({ permissions }: { permissions: readonly string[] }) {
     !permission || permissions.includes('*') || permissions.includes(permission);
 
   return (
-    <aside className="hidden w-56 shrink-0 border-r border-border bg-surface lg:block">
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <span className="text-[11px] font-bold">LB</span>
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <div className="flex items-center gap-3 border-b border-border p-5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span className="text-xs font-bold">LB</span>
         </div>
-        <span className="text-sm font-semibold tracking-tight">LedgerBase</span>
+        <div className="min-w-0">
+          <p className="truncate text-base font-bold tracking-tight text-primary">LedgerBase</p>
+          <p className="truncate text-[11px] text-muted-foreground">Enterprise Accounting</p>
+        </div>
       </div>
 
-      <nav className="space-y-5 overflow-y-auto px-3 py-4" style={{ maxHeight: 'calc(100vh - 3.5rem)' }}>
+      <nav
+        className="flex-1 space-y-5 overflow-y-auto px-3 py-4"
+        style={{ maxHeight: 'calc(100vh - 4.5rem)' }}
+      >
         {NAV.map((group) => {
           const visible = group.items.filter((item) => can(item.permission));
           if (visible.length === 0) return null;
 
           return (
             <div key={group.label}>
-              <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-subtle-foreground">
+              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-caps text-subtle-foreground">
                 {group.label}
               </p>
               <ul className="space-y-0.5">
@@ -117,10 +123,10 @@ export function Sidebar({ permissions }: { permissions: readonly string[] }) {
                       <Link
                         href={item.href}
                         className={cn(
-                          'block rounded-md px-2 py-1.5 text-sm transition-colors',
+                          'block border-l-4 px-3 py-1.5 text-sm transition-colors',
                           active
-                            ? 'bg-accent-subtle font-medium text-accent'
-                            : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                            ? 'border-primary bg-surface-muted font-semibold text-foreground'
+                            : 'border-transparent text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                         )}
                       >
                         {item.label}

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LedgerBase - Financial Reports</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed": "#001e2f",
+                        "tertiary-fixed-dim": "#89ceff",
+                        "tertiary-fixed": "#c9e6ff",
+                        "surface-tint": "#565e74",
+                        "primary-fixed": "#dae2fd",
+                        "primary-container": "#131b2e",
+                        "surface-variant": "#e0e3e5",
+                        "on-secondary-container": "#57657b",
+                        "on-tertiary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#004c6e",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "on-primary-container": "#7c839b",
+                        "on-secondary-fixed": "#0d1c2f",
+                        "primary-fixed-dim": "#bec6e0",
+                        "on-secondary-fixed-variant": "#3a485c",
+                        "on-tertiary-container": "#008cc7",
+                        "surface": "#f7f9fb",
+                        "on-primary-fixed": "#131b2e",
+                        "tertiary": "#000000",
+                        "outline": "#76777d",
+                        "on-error": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#f2f4f6",
+                        "inverse-primary": "#bec6e0",
+                        "outline-variant": "#c6c6cd",
+                        "surface-bright": "#f7f9fb",
+                        "on-secondary": "#ffffff",
+                        "secondary-fixed-dim": "#b9c7e0",
+                        "on-background": "#191c1e",
+                        "on-surface-variant": "#45464d",
+                        "on-error-container": "#93000a",
+                        "surface-container-high": "#e6e8ea",
+                        "secondary-fixed": "#d5e3fd",
+                        "secondary": "#515f74",
+                        "surface-container": "#eceef0",
+                        "background": "#f7f9fb",
+                        "primary": "#000000",
+                        "surface-container-highest": "#e0e3e5",
+                        "secondary-container": "#d5e3fd",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-dim": "#d8dadc",
+                        "on-surface": "#191c1e",
+                        "inverse-surface": "#2d3133",
+                        "tertiary-container": "#001e2f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-md": "1rem",
+                        "stack-xs": "0.25rem",
+                        "gutter": "1rem",
+                        "stack-sm": "0.5rem",
+                        "inset-table": "0.75rem 1rem",
+                        "container-max": "1440px",
+                        "stack-lg": "1.5rem"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "display": ["Inter"],
+                        "data-tabular": ["Inter"],
+                        "mono-code": ["JetBrains Mono"],
+                        "label-caps": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "display": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "data-tabular": ["14px", { "lineHeight": "20px", "fontWeight": "500" }],
+                        "mono-code": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<!-- SideNavBar -->
+<nav class="hidden md:flex w-60 h-screen fixed left-0 top-0 bg-surface border-r border-outline-variant flex flex-col transition-colors duration-200">
+<!-- Header -->
+<div class="p-6 border-b border-outline-variant">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center text-on-primary font-bold">L</div>
+<div>
+<h1 class="font-headline-lg text-headline-lg font-bold text-primary">LedgerBase</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Enterprise Accounting</p>
+</div>
+</div>
+<button class="mt-4 w-full bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-caps text-label-caps py-2 rounded transition-colors flex items-center justify-center gap-2 border border-outline-variant">
+<span class="material-symbols-outlined text-[16px]">domain</span> Switch Entity
+            </button>
+</div>
+<!-- Main Navigation -->
+<ul class="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span> Dashboard
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span> Documents
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance">account_balance</span> Ledger
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 border-l-4 border-primary bg-surface-container-high text-on-surface font-bold transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span> Reports
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span> Config
+                </a>
+</li>
+</ul>
+<!-- Footer Navigation -->
+<ul class="border-t border-outline-variant py-4 flex flex-col gap-1">
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span> Support
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span> Settings
+                </a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 flex flex-col min-h-screen">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between w-full pr-8 py-4 bg-surface-container-lowest h-16 border-b border-outline-variant transition-colors duration-200">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-extrabold text-primary md:hidden ml-4">LedgerBase</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden sm:flex gap-4">
+<span class="text-on-secondary-container font-label-caps text-label-caps">Fiscal Year 2024</span>
+<span class="text-on-secondary-container font-label-caps text-label-caps">USD</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+</button>
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Page Content -->
+<div class="p-8 flex-1 max-w-container-max mx-auto w-full">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+<div>
+<h2 class="font-display text-display text-primary">Financial Reports</h2>
+<div class="flex items-center gap-3 mt-2">
+<span class="font-mono-code text-mono-code text-on-surface-variant">Generated at: 2023-10-27T14:32:01Z</span>
+<span class="inline-flex items-center gap-1 bg-tertiary-fixed text-on-tertiary-fixed-variant px-2 py-1 rounded-full font-label-caps text-label-caps">
+<span class="w-2 h-2 rounded-full bg-on-tertiary-fixed animate-pulse"></span> Live from Ledger
+                        </span>
+</div>
+</div>
+<div class="flex gap-2">
+<button class="bg-surface hover:bg-surface-container-low border border-outline-variant text-primary font-body-md text-body-md py-2 px-4 rounded transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">download</span> Export PDF
+                    </button>
+<button class="bg-primary hover:bg-primary-container text-on-primary font-body-md text-body-md py-2 px-4 rounded transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">table_chart</span> Export CSV
+                    </button>
+</div>
+</div>
+<!-- Tabs -->
+<div class="flex border-b border-outline-variant mb-8 overflow-x-auto">
+<button class="px-6 py-3 font-label-caps text-label-caps text-primary border-b-2 border-primary bg-surface-container-lowest">Balance Sheet</button>
+<button class="px-6 py-3 font-label-caps text-label-caps text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors">Profit &amp; Loss</button>
+<button class="px-6 py-3 font-label-caps text-label-caps text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors">Trial Balance</button>
+</div>
+<!-- Report Content -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 shadow-sm">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<!-- Assets Column -->
+<div>
+<h3 class="font-headline-md text-headline-md text-primary border-b-2 border-outline-variant pb-2 mb-4">Assets</h3>
+<div class="space-y-4">
+<!-- Current Assets -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-2 bg-surface-container-low px-2 py-1">Current Assets</h4>
+<table class="w-full">
+<tbody>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Cash and Cash Equivalents</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">2,450,000.000000</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Accounts Receivable</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">1,235,500.500000</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Inventory</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">850,250.750000</td>
+</tr>
+<tr class="font-bold border-t border-outline-variant mt-2 bg-surface-container-lowest">
+<td class="py-3 pl-2 font-body-md text-body-md text-primary">Total Current Assets</td>
+<td class="py-3 pr-4 font-data-tabular text-data-tabular text-right text-primary">4,535,751.250000</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Non-Current Assets -->
+<div class="mt-6">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-2 bg-surface-container-low px-2 py-1">Non-Current Assets</h4>
+<table class="w-full">
+<tbody>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Property, Plant &amp; Equipment</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">5,100,000.000000</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Intangible Assets</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">750,000.000000</td>
+</tr>
+<tr class="font-bold border-t border-outline-variant mt-2 bg-surface-container-lowest">
+<td class="py-3 pl-2 font-body-md text-body-md text-primary">Total Non-Current Assets</td>
+<td class="py-3 pr-4 font-data-tabular text-data-tabular text-right text-primary">5,850,000.000000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Total Assets -->
+<div class="mt-8 border-t-4 border-primary pt-4 bg-surface-container-lowest">
+<div class="flex justify-between items-center px-2">
+<span class="font-headline-md text-headline-md text-primary font-bold">Total Assets</span>
+<span class="font-data-tabular text-[18px] text-right text-[#059669] font-bold">10,385,751.250000</span>
+</div>
+</div>
+</div>
+<!-- Liabilities & Equity Column -->
+<div>
+<!-- Liabilities -->
+<h3 class="font-headline-md text-headline-md text-primary border-b-2 border-outline-variant pb-2 mb-4">Liabilities</h3>
+<div class="space-y-4">
+<!-- Current Liabilities -->
+<div>
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-2 bg-surface-container-low px-2 py-1">Current Liabilities</h4>
+<table class="w-full">
+<tbody>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Accounts Payable</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">890,200.000000</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Short-term Debt</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">500,000.000000</td>
+</tr>
+<tr class="font-bold border-t border-outline-variant mt-2 bg-surface-container-lowest">
+<td class="py-3 pl-2 font-body-md text-body-md text-primary">Total Current Liabilities</td>
+<td class="py-3 pr-4 font-data-tabular text-data-tabular text-right text-primary">1,390,200.000000</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Non-Current Liabilities -->
+<div class="mt-6">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant mb-2 bg-surface-container-low px-2 py-1">Non-Current Liabilities</h4>
+<table class="w-full">
+<tbody>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Long-term Debt</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">2,500,000.000000</td>
+</tr>
+<tr class="font-bold border-t border-outline-variant mt-2 bg-surface-container-lowest">
+<td class="py-3 pl-2 font-body-md text-body-md text-primary">Total Non-Current Liabilities</td>
+<td class="py-3 pr-4 font-data-tabular text-data-tabular text-right text-primary">2,500,000.000000</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="mt-4 border-t-2 border-outline-variant pt-2 bg-surface-container-lowest">
+<div class="flex justify-between items-center px-2">
+<span class="font-body-md text-body-md text-primary font-bold">Total Liabilities</span>
+<span class="font-data-tabular text-data-tabular text-right text-primary font-bold">3,890,200.000000</span>
+</div>
+</div>
+</div>
+<!-- Equity -->
+<h3 class="font-headline-md text-headline-md text-primary border-b-2 border-outline-variant pb-2 mb-4 mt-8">Equity</h3>
+<div class="space-y-4">
+<div>
+<table class="w-full">
+<tbody>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Common Stock</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">1,000,000.000000</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors group cursor-pointer border-b border-outline-variant/30">
+<td class="py-2 pl-4 font-body-md text-body-md text-on-surface">Retained Earnings</td>
+<td class="py-2 pr-4 font-data-tabular text-data-tabular text-right text-primary group-hover:text-tertiary-container">5,495,551.250000</td>
+</tr>
+<tr class="font-bold border-t border-outline-variant mt-2 bg-surface-container-lowest">
+<td class="py-3 pl-2 font-body-md text-body-md text-primary">Total Equity</td>
+<td class="py-3 pr-4 font-data-tabular text-data-tabular text-right text-primary">6,495,551.250000</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Total Liabilities & Equity -->
+<div class="mt-8 border-t-4 border-primary pt-4 bg-surface-container-lowest">
+<div class="flex justify-between items-center px-2">
+<span class="font-headline-md text-headline-md text-primary font-bold">Total Liab. &amp; Equity</span>
+<span class="font-data-tabular text-[18px] text-right text-[#059669] font-bold">10,385,751.250000</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

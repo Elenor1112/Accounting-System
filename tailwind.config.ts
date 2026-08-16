@@ -45,12 +45,21 @@ const config: Config = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        xl: 'calc(var(--radius) + 4px)',
+      },
+      fontFamily: {
+        sans: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-jetbrains-mono)', 'JetBrains Mono', 'monospace'],
       },
       fontSize: {
         // A denser default than Tailwind's, suited to data-heavy screens.
         xs: ['0.75rem', { lineHeight: '1rem' }],
         sm: ['0.8125rem', { lineHeight: '1.25rem' }],
         base: ['0.875rem', { lineHeight: '1.375rem' }],
+        display: ['2.25rem', { lineHeight: '2.75rem', letterSpacing: '-0.02em', fontWeight: '700' }],
+      },
+      letterSpacing: {
+        caps: '0.05em',
       },
       keyframes: {
         'fade-in': {

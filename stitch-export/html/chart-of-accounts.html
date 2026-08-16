@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LedgerBase - Chart of Accounts</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error": "#ba1a1a",
+                      "on-tertiary-fixed": "#001e2f",
+                      "tertiary-fixed-dim": "#89ceff",
+                      "tertiary-fixed": "#c9e6ff",
+                      "surface-tint": "#565e74",
+                      "primary-fixed": "#dae2fd",
+                      "primary-container": "#131b2e",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary-container": "#57657b",
+                      "on-tertiary": "#ffffff",
+                      "on-tertiary-fixed-variant": "#004c6e",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "on-primary-container": "#7c839b",
+                      "on-secondary-fixed": "#0d1c2f",
+                      "primary-fixed-dim": "#bec6e0",
+                      "on-secondary-fixed-variant": "#3a485c",
+                      "on-tertiary-container": "#008cc7",
+                      "surface": "#f7f9fb",
+                      "on-primary-fixed": "#131b2e",
+                      "tertiary": "#000000",
+                      "outline": "#76777d",
+                      "on-error": "#ffffff",
+                      "on-primary": "#ffffff",
+                      "surface-container-low": "#f2f4f6",
+                      "inverse-primary": "#bec6e0",
+                      "outline-variant": "#c6c6cd",
+                      "surface-bright": "#f7f9fb",
+                      "on-secondary": "#ffffff",
+                      "secondary-fixed-dim": "#b9c7e0",
+                      "on-background": "#191c1e",
+                      "on-surface-variant": "#45464d",
+                      "on-error-container": "#93000a",
+                      "surface-container-high": "#e6e8ea",
+                      "secondary-fixed": "#d5e3fd",
+                      "secondary": "#515f74",
+                      "surface-container": "#eceef0",
+                      "background": "#f7f9fb",
+                      "primary": "#000000",
+                      "surface-container-highest": "#e0e3e5",
+                      "secondary-container": "#d5e3fd",
+                      "surface-container-lowest": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "inverse-on-surface": "#eff1f3",
+                      "surface-dim": "#d8dadc",
+                      "on-surface": "#191c1e",
+                      "inverse-surface": "#2d3133",
+                      "tertiary-container": "#001e2f"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-md": "1rem",
+                      "stack-xs": "0.25rem",
+                      "gutter": "1rem",
+                      "stack-sm": "0.5rem",
+                      "inset-table": "0.75rem 1rem",
+                      "container-max": "1440px",
+                      "stack-lg": "1.5rem"
+              },
+              "fontFamily": {
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "display": [
+                              "Inter"
+                      ],
+                      "data-tabular": [
+                              "Inter"
+                      ],
+                      "mono-code": [
+                              "JetBrains Mono"
+                      ],
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "headline-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display": [
+                              "36px",
+                              {
+                                      "lineHeight": "44px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "data-tabular": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "mono-code": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen overflow-x-hidden">
+<!-- TopAppBar -->
+<header class="fixed docked full-width top-0 h-16 bg-surface-container-lowest border-b border-outline-variant flat no shadows flex items-center justify-between w-full pl-64 pr-8 py-4 z-40">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-extrabold text-primary">LedgerBase</span>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<div class="flex items-center gap-6 font-label-caps text-label-caps">
+<span class="text-on-secondary-container">Fiscal Year 2024</span>
+<span class="text-on-secondary-container">USD</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80 flex items-center justify-center relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full border border-surface-container-lowest"></span>
+</button>
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+</button>
+<button class="text-on-secondary-container hover:text-primary transition-all cursor-pointer active:opacity-80 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="w-60 h-screen fixed left-0 top-0 bg-surface border-r border-outline-variant flat no shadows flex flex-col h-full border-r border-outline-variant z-50">
+<div class="p-6 border-b border-outline-variant flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary" data-icon="business">business</span>
+</div>
+<div>
+<div class="font-headline-lg text-headline-lg font-bold text-primary">LedgerBase</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">Enterprise Accounting</div>
+</div>
+</div>
+<div class="p-4 border-b border-outline-variant">
+<button class="w-full py-2 px-4 bg-surface-container-low border border-outline-variant rounded hover:bg-surface-container-highest transition-colors duration-200 flex justify-between items-center text-sm font-medium">
+                Switch Entity
+                <span class="material-symbols-outlined text-sm" data-icon="expand_more">expand_more</span>
+</button>
+</div>
+<ul class="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                    Dashboard
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+                    Documents
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 border-l-4 border-primary bg-surface-container-high text-on-surface font-bold transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance">account_balance</span>
+                    Ledger
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+                    Reports
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Config
+                </a>
+</li>
+</ul>
+<div class="border-t border-outline-variant p-4">
+<ul class="flex flex-col gap-1">
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+                        Support
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 font-body-md text-body-md" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                        Settings
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="ml-60 pt-16 min-h-screen bg-slate-50 flex flex-col">
+<div class="flex-1 p-gutter max-w-container-max mx-auto w-full flex flex-col gap-stack-lg">
+<!-- Page Header & Actions -->
+<div class="flex items-end justify-between">
+<div>
+<h1 class="font-display text-display text-on-background mb-1">Chart of Accounts</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage hierarchical accounting structure and roles.</p>
+</div>
+<div class="flex gap-3">
+<button class="bg-surface-container-lowest border border-outline-variant text-on-surface px-4 py-2 rounded font-label-caps text-label-caps hover:bg-surface-container-low transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="download">download</span>
+                        Export
+                    </button>
+<button class="bg-primary text-on-primary px-4 py-2 rounded font-label-caps text-label-caps hover:bg-opacity-90 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                        New Account
+                    </button>
+</div>
+</div>
+<!-- Toolbar: Search & Filter -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 flex gap-4 items-center shadow-sm">
+<div class="flex-1 relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="w-full pl-9 pr-4 py-2 border border-outline-variant rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none font-body-sm text-body-sm bg-surface-container-lowest text-on-surface placeholder-on-surface-variant transition-colors" placeholder="Search account code or name..." type="text"/>
+</div>
+<div class="relative w-64">
+<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="filter_list">filter_list</span>
+</div>
+<select class="w-full pl-9 pr-8 py-2 border border-outline-variant rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none font-body-sm text-body-sm bg-surface-container-lowest text-on-surface appearance-none cursor-pointer">
+<option value="">All Roles</option>
+<option value="bank">Bank / Cash</option>
+<option value="ar_control">AR Control</option>
+<option value="ap_control">AP Control</option>
+<option value="tax">Tax Authority</option>
+<option value="none">No Role</option>
+</select>
+<div class="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="arrow_drop_down">arrow_drop_down</span>
+</div>
+</div>
+<button class="bg-surface-container-lowest border border-outline-variant text-on-surface px-3 py-2 rounded hover:bg-surface-container-low transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-sm" data-icon="unfold_more">unfold_more</span>
+</button>
+</div>
+<!-- Data Table: Hierarchical -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden flex-1 shadow-sm flex flex-col">
+<div class="overflow-x-auto flex-1">
+<table class="w-full text-left border-collapse min-w-[800px]">
+<thead class="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10">
+<tr>
+<th class="p-inset-table font-label-caps text-label-caps text-on-surface-variant w-1/4">Account Code &amp; Name</th>
+<th class="p-inset-table font-label-caps text-label-caps text-on-surface-variant w-1/6">Type</th>
+<th class="p-inset-table font-label-caps text-label-caps text-on-surface-variant w-1/6">Role</th>
+<th class="p-inset-table font-label-caps text-label-caps text-on-surface-variant w-1/4 text-right">Current Balance (YTD)</th>
+<th class="p-inset-table font-label-caps text-label-caps text-on-surface-variant w-[80px]"></th>
+</tr>
+</thead>
+<tbody class="font-data-tabular text-data-tabular text-on-surface">
+<!-- Level 1: Assets -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group bg-slate-50">
+<td class="p-inset-table flex items-center gap-2">
+<button class="text-on-surface-variant hover:text-primary p-0.5 rounded focus:outline-none">
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</button>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">1000</span>
+<span class="font-semibold">Assets</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Asset</td>
+<td class="p-inset-table"></td>
+<td class="p-inset-table text-right text-emerald-600 font-mono-code text-mono-code">$1,245,000.00</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 2: Current Assets -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-8">
+<button class="text-on-surface-variant hover:text-primary p-0.5 rounded focus:outline-none">
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</button>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">1100</span>
+<span>Current Assets</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Asset</td>
+<td class="p-inset-table"></td>
+<td class="p-inset-table text-right text-emerald-600 font-mono-code text-mono-code">$850,000.00</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 3: Bank -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-14">
+<div class="w-5 h-px bg-outline-variant/50 ml-1 mr-1"></div>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">1101</span>
+<span>Operating Account - Chase</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Asset</td>
+<td class="p-inset-table">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                        Bank
+                                    </span>
+</td>
+<td class="p-inset-table text-right text-emerald-600 font-mono-code text-mono-code">$450,000.00</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 3: AR -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-14">
+<div class="w-5 h-px bg-outline-variant/50 ml-1 mr-1"></div>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">1120</span>
+<span>Accounts Receivable</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Asset</td>
+<td class="p-inset-table">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        AR Control
+                                    </span>
+</td>
+<td class="p-inset-table text-right text-emerald-600 font-mono-code text-mono-code">$400,000.00</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 2: Fixed Assets -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-8">
+<button class="text-on-surface-variant hover:text-primary p-0.5 rounded focus:outline-none">
+<span class="material-symbols-outlined text-[16px]" data-icon="chevron_right">chevron_right</span>
+</button>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">1500</span>
+<span>Fixed Assets</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Asset</td>
+<td class="p-inset-table"></td>
+<td class="p-inset-table text-right text-emerald-600 font-mono-code text-mono-code">$395,000.00</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 1: Liabilities -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group bg-slate-50 mt-2">
+<td class="p-inset-table flex items-center gap-2">
+<button class="text-on-surface-variant hover:text-primary p-0.5 rounded focus:outline-none">
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</button>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">2000</span>
+<span class="font-semibold">Liabilities</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Liability</td>
+<td class="p-inset-table"></td>
+<td class="p-inset-table text-right text-rose-600 font-mono-code text-mono-code">($620,000.00)</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 2: Current Liabilities -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-8">
+<button class="text-on-surface-variant hover:text-primary p-0.5 rounded focus:outline-none">
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</button>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">2100</span>
+<span>Current Liabilities</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Liability</td>
+<td class="p-inset-table"></td>
+<td class="p-inset-table text-right text-rose-600 font-mono-code text-mono-code">($220,000.00)</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 3: AP -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-14">
+<div class="w-5 h-px bg-outline-variant/50 ml-1 mr-1"></div>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">2110</span>
+<span>Accounts Payable</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Liability</td>
+<td class="p-inset-table">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                        AP Control
+                                    </span>
+</td>
+<td class="p-inset-table text-right text-rose-600 font-mono-code text-mono-code">($150,000.00)</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+<!-- Level 3: Tax -->
+<tr class="border-b border-outline-variant/50 hover:bg-surface-bright transition-colors group">
+<td class="p-inset-table flex items-center gap-2 pl-14">
+<div class="w-5 h-px bg-outline-variant/50 ml-1 mr-1"></div>
+<span class="font-mono-code text-mono-code text-on-surface-variant w-12">2150</span>
+<span>Sales Tax Payable</span>
+</td>
+<td class="p-inset-table text-on-surface-variant">Liability</td>
+<td class="p-inset-table">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                        Tax
+                                    </span>
+</td>
+<td class="p-inset-table text-right text-rose-600 font-mono-code text-mono-code">($70,000.00)</td>
+<td class="p-inset-table text-right">
+<button class="text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination / Footer -->
+<div class="bg-surface-container-lowest border-t border-outline-variant p-3 flex justify-between items-center text-body-sm text-on-surface-variant">
+<span>Showing 1-9 of 245 accounts</span>
+<div class="flex gap-2">
+<button class="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low disabled:opacity-50" disabled="">Previous</button>
+<button class="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low">Next</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>
